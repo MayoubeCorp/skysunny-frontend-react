@@ -1,0 +1,886 @@
+/* main.scss */
+body,
+html {
+    margin: 0;
+    padding: 0;
+}
+
+/* 색상 변수 */
+$mainColor: #B8EBF3;
+$white: #FFFFFF;
+$black: #000000;
+$red: #F1294F;
+$lightGray: #F6F6F6;
+$mediumGray: #E5E5E5;
+$fontGray: #6E6E6E;
+$fontLightGray: #B2B2B2;
+$fontDarkGray: #A4A4A4;
+$darkGray: #333333;
+$grey10: #2D2D2D;
+$grey20: #444444;
+$grey30: #666666;
+$grey40: #8C8C8C;
+$grey70: #C4C4C4;
+$grey80: #E0E0E0;
+$gray100: #F4F4F5;
+$gray200: #DBDCDD;
+$gray300: #C1C3C5;
+$gray500: #979797;
+$gray600: #79797E;
+$gray700: #5E6165;
+$gray900: #262626;
+
+/* 폰트 고정값 */
+$font12: 12px;
+$font13: 13px;
+$font14: 14px;
+$font15: 15px;
+$font16: 16px;
+$font18: 18px;
+$font20: 20px;
+$font24: 24px;
+$font26: 26px;
+
+@font-face {
+    font-family: 'NotoSansKR';
+    src: url('../assets/fonts/NotoSansKR.ttf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BMDoHyeon';
+    src: url('../assets/fonts/BMDoHyeon.ttf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+.font-noto {
+    font-family: 'NotoSansKR', sans-serif;
+}
+
+.font-bm {
+    font-family: 'BMDoHyeon', sans-serif;
+}
+
+
+.top-bar {
+    display: flex;
+    align-items: center;
+    width: '100%';
+    height: 40px;
+    background-color: $white;
+    padding: 0 15px;
+
+    .top-bar-left img {
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-top: 5px;
+    }
+
+    .top-bar-center .top-txt {
+        font-weight: 400;
+        font-size: $font15;
+        line-height: $font15;
+        color: $black;
+    }
+}
+
+/* 구매확인 페이지 */
+.container {
+    width: 100%;
+    padding-bottom: 100px;
+    // max-width: 360px;
+    margin: 0 auto;
+    background-color: $lightGray;
+    font-family: 'Noto Sans KR', sans-serif;
+
+    /* 상단 바 */
+
+
+    /* 배너 슬라이더 */
+    .banner-container {
+        width: 100%;
+    }
+
+    .banner-slider {
+        position: relative;
+        width: 100%;
+
+        .slider-wrapper {
+            display: flex;
+            overflow: hidden;
+            width: 100%;
+            border-radius: 0;
+            position: relative;
+
+            .slider-item {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                transition: transform 0.3s ease-in-out;
+
+                img {
+                    width: 100%;
+                    height: 80px;
+                    object-fit: cover;
+                    cursor: pointer;
+                    background-color: #eee;
+                }
+            }
+        }
+
+        .page-indicator {
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+
+            .counter-btn {
+                background-color: rgba(0, 0, 0, 0.6);
+                padding: 0px 8px;
+                border-radius: 6px;
+
+                .page-text {
+                    color: white;
+                    font-size: 10px;
+                }
+            }
+        }
+    }
+
+    /* 구매 정보 */
+    .info-container {
+
+        .section-title-box {
+            width: 90%;
+            margin: 20px auto 10px auto;
+        }
+
+        .section-title {
+            font-size: $font12;
+            line-height: $font16;
+            color: $gray900;
+            text-align: left;
+        }
+
+        .info-box {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            width: 93%;
+            background-color: $white;
+            padding: 15px;
+            border-radius: 6px;
+            // margin: 0 auto;
+            border: 1px solid $gray200;
+            box-sizing: border-box;
+            margin: 0 auto;
+
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 12px;
+                // border: 1px solid #000;
+
+                &:last-child {
+                    margin-bottom: 0;
+                }
+
+                .info-title {
+                    font-weight: 700;
+                    font-size: $font12;
+                    line-height: $font16;
+                    color: $black;
+                }
+
+                .info-text {
+                    font-size: $font12;
+                    line-height: $font16;
+                    color: $gray900;
+                }
+
+                .info-img img {
+                    width: 16px;
+                    height: 16px;
+                }
+            }
+
+            .line {
+                border-bottom: 1px solid;
+                border-color: $gray200;
+                margin: 12px 0;
+            }
+
+            .dashed-line {
+                border-top: 1px dashed;
+                border-color: $gray200;
+                margin: 12px 0;
+            }
+
+            .coupon-guide-text {
+                margin-bottom: -5px !important;
+
+            }
+
+            .coupon-guide-text1 {
+                color: $gray600;
+            }
+
+            .coupon-btn {
+                height: 20px;
+                background-color: $mainColor;
+                border: 1px solid $black;
+                border-radius: 2px;
+                font-size: $font12;
+                line-height: $font12;
+                color: $black;
+                cursor: pointer;
+            }
+        }
+
+
+    }
+
+
+
+    /* 결제 수단 */
+    .payment-methods {
+        display: flex;
+        width: 93%;
+        margin: 0 auto;
+        justify-content: space-between;
+
+        .payment-btn {
+            width: 43.75%; // 157.5 / 360
+            padding: 8px 0;
+            border-radius: 6px;
+            border: 1px solid $gray300;
+            background-color: $white;
+            cursor: pointer;
+
+            .payment-text {
+                font-size: $font12;
+                line-height: $font12;
+                color: $gray300;
+            }
+
+            &.active {
+                background-color: $mainColor;
+                border-color: $black;
+                color: $black;
+
+                .payment-text {
+                    color: $black;
+                }
+            }
+
+        }
+    }
+
+    /* 고정 푸터용 보조 변수 (필요 시 수치만 미세조정) */
+    .checkout-page {
+        /* .bottom-bar2(약 44px) + 간격 8px + .bottom-button(약 56px) */
+        --footer-h: 108px;
+    }
+
+    /* 본문만 스크롤: 화면 높이 - 하단 고정 높이 */
+    .content-scroll {
+        overflow: auto;
+        height: calc(100vh - var(--footer-h));
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* 하단 고정: 기존 .bottom-bar2 / .bottom-button 스타일은 그대로 사용 */
+    .checkout-footer-fixed {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: #fff;
+        z-index: 100;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* 스크롤 여백: 고정 영역만큼 확보 */
+    .scroll-spacer {
+        height: var(--footer-h);
+    }
+
+
+    /* 안내사항 */
+    .section2-title-box {
+        width: 90%;
+        margin: 15px auto;
+        display: flex;
+        align-items: flex-start;
+    }
+
+    .section2-title-box2 {
+        width: 90%;
+        margin: 0 auto;
+        padding-bottom: 50px;
+    }
+
+
+    .section-title {
+        font-size: $font12;
+        line-height: $font16;
+        color: $gray900;
+        text-align: center;
+    }
+
+    .text-box {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .icon14 {
+        width: 14px;
+        height: 14px;
+        margin-right: 4px;
+
+    }
+
+    .note-text {
+        font-size: $font12;
+        line-height: $font12;
+        color: $black;
+        margin-top: 8px;
+    }
+
+    .section2-title-box3 {
+        padding: 15px 0px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+
+        .line {
+            width: 93%;
+            /* 부모 너비 전체 */
+            height: 1px;
+            /* 선 두께 */
+            background-color: $gray200;
+            /* 선 색상 */
+            margin: 16px 0;
+        }
+
+    }
+
+    .section2-title-box3 .note-text {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 16px 0;
+        text-align: center;
+        position: relative;
+        font-size: $font12;
+        line-height: $font20;
+    }
+
+    .section2-title-box3 .note-text::before,
+    .section2-title-box3 .note-text::after {
+        content: "";
+        display: inline-block;
+        width: 120px;
+        flex: 1;
+        border: 0.5px solid $gray200;
+        /* 선 색상 */
+        margin: 0 12px;
+        /* 글자와 선 사이 간격 */
+    }
+
+
+    .atm-text {
+        font-size: $font12;
+        line-height: $font16;
+        color: $gray600;
+
+        border: 1px solid $gray300;
+        border-radius: 6px;
+        padding: 15px;
+
+    }
+
+    .copy-url-box {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .url-text {
+        font-size: $font13;
+        line-height: $font26;
+        color: $gray900;
+        word-break: break-all;
+        margin-right: 25px;
+    }
+
+    .copy-btn {
+        font-size: 13px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .copy-btn:hover {
+        background-color: #e0e0e0;
+    }
+
+    p.note-text:last-child {
+        font-size: 12px;
+        color: #666666;
+        margin-top: 8px;
+        line-height: 1.6;
+    }
+
+
+
+    /* 하단 결제 금액 */
+    .bottom-bar2 {
+        width: 100%;
+        // max-width: 360px;
+        display: flex;
+        justify-content: space-between;
+        padding: 15px;
+        background-color: $white;
+        font-size: $font15;
+        line-height: $font15;
+        font-weight: 500;
+        box-sizing: border-box;
+    }
+
+    /* 하단 결제 버튼 */
+    .bottom-button {
+        width: 100%;
+        height: 52px;
+        background-color: $mainColor;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        button {
+            font-size: $font16;
+            line-height: $font16;
+            color: $gray900;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+    }
+}
+
+
+.tab-container {
+    display: flex;
+    justify-content: center;
+    // flex-wrap: wrap;
+    width: '100%';
+    padding: 20px 15px;
+    background-color: $white;
+
+    .tab-btn {
+        width: 23%;
+        height: 36px;
+        padding: 6px 0;
+        margin-right: 5px;
+        border-radius: 4px;
+        border: 1px solid transparent;
+        font-size: $font12;
+        cursor: pointer;
+        background-color: $gray100;
+        color: $gray900;
+
+        &.active {
+            background-color: $mainColor;
+            border: 1px solid $black;
+            color: $black;
+        }
+
+        &:last-child {
+            margin-right: 0;
+        }
+    }
+}
+
+.coupon-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    background-color: $lightGray;
+    min-height: calc(100vh - 60px);
+    box-sizing: border-box;
+
+    .coupon-card {
+        width: 330px;
+        border-radius: 6px;
+        border: 1px solid #e5e5e5;
+        background-color: #fff;
+        padding: 10px;
+        margin-bottom: 20px;
+
+        .coupon-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid $mediumGray;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+
+        .status-box {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: $lightGray;
+            border-radius: 4px;
+            padding: 2px 7.5px;
+
+            .coupon-type {
+                font-size: $font12;
+                line-height: $font16;
+                text-align: center;
+            }
+        }
+
+        .title-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+
+            .tag {
+                background-color: $lightGray;
+                border-radius: 4px;
+                padding: 2px 6px;
+                margin-right: 5px;
+                font-size: $font12;
+            }
+
+            .coupon-title {
+                font-weight: 500;
+            }
+        }
+
+        .date-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+
+            .date-text {
+                color: red;
+                font-size: $font12;
+                line-height: $font16;
+                font-weight: 700;
+            }
+        }
+
+        .bottom-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        .amount {
+            color: $black;
+            font-size: $font18;
+            line-height: $font24;
+            font-weight: 400;
+        }
+
+        .min-use {
+            color: $fontGray;
+            font-size: $font12;
+            line-height: $font20;
+            font-weight: 400;
+        }
+
+        .detail-btn {
+            margin-top: 10px;
+            width: 100%;
+            padding: 8px 0;
+            background-color: $mainColor;
+            border: 1px solid $gray900;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .btn-text {
+            color: $gray900;
+            font-size: $font13;
+            line-height: $font20;
+            font-weight: 400;
+        }
+    }
+
+    .no-coupon {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 120px;
+
+        .no-coupon-img {
+            width: 90px;
+            height: 90px;
+        }
+
+        .no-coupon-text {
+            margin-top: 10px;
+            font-size: $font14;
+            line-height: $font20;
+            color: $grey30;
+        }
+    }
+}
+
+
+.complete-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: $lightGray;
+    min-height: 100vh;
+    position: relative;
+    padding-bottom: 60px;
+}
+
+.payment-img {
+    width: 150px;
+    height: 150px;
+    margin-top: 70px;
+    object-fit: contain;
+}
+
+.notice-box {
+    width: 330px;
+    margin-top: 50px;
+
+    .notice-text {
+        font-size: $font12;
+        line-height: $font16;
+        color: $gray900;
+        text-align: left;
+    }
+}
+
+.info-card {
+    width: 330px;
+    border-radius: 6px;
+    border: 1px solid $gray200;
+    background-color: $white;
+    padding: 15px;
+    margin-top: 10px;
+    box-sizing: border-box;
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+
+        .title {
+            font-weight: 700;
+            font-size: $font12;
+            line-height: $font16;
+            color: $black;
+        }
+
+        .text {
+            font-size: $font12;
+            line-height: $font16;
+            color: $gray900;
+        }
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    .line {
+        border-bottom: 1px solid $gray200;
+        margin: 12px 0;
+    }
+}
+
+.enter-btn-box {
+    display: flex;
+    justify-content: center;
+    width: 330px;
+    margin: 15px 0;
+
+    .enter-btn {
+        width: 100%;
+        padding: 8px 0;
+        border-radius: 6px;
+        border: 1px solid $gray900;
+        background-color: $white;
+        font-size: $font14;
+        cursor: pointer;
+        color: $gray900;
+    }
+}
+
+.bottom-bar {
+    position: fixed;
+    bottom: 0;
+    width: 100vw;
+    height: 52px;
+    background-color: $mainColor;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    .bottom-btn {
+        font-size: $font16;
+        line-height: 26px;
+        color: $gray900;
+        background: none;
+        border: none;
+        cursor: pointer;
+    }
+}
+
+
+
+.qr-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    background: #f5f5f5;
+    position: relative;
+    margin: 0 auto;
+}
+
+.qr-header {
+    height: 290px;
+    width: 100vw;
+    background-color: $mainColor;
+
+
+    .qr-header-inner {
+        padding: 40px 15px 0;
+        text-align: center;
+    }
+
+    .qr-header-text {
+        font-size: $font15;
+        line-height: $font26;
+        margin-top: 35px;
+        font-weight: 400;
+    }
+}
+
+.qr-box-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: -150px;
+}
+
+.menu-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: $white;
+    border-radius: 6px;
+    padding: 30px 37px 11px;
+    margin-bottom: 15px;
+    box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.1);
+
+    .qr-img {
+        width: 170px;
+        height: 170px;
+        object-fit: contain;
+    }
+
+    .qr-timer-box {
+        display: flex;
+        align-items: center;
+        margin-top: 12px;
+
+        .qr-timer {
+            font-size: $font13;
+            line-height: $font26;
+            color: $gray500;
+            margin-left: 4px;
+        }
+    }
+}
+
+.icon18 {
+    width: 18px;
+    height: 18px;
+}
+
+.info-basic {
+    width: 250px;
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+
+        .info-label {
+            display: flex;
+            align-items: center;
+
+            img {
+                margin-right: 10px;
+            }
+
+            .title {
+                font-weight: 700;
+                font-size: $font12;
+                line-height: $font16;
+                color: $black;
+            }
+        }
+
+        .text {
+            font-size: $font12;
+            line-height: $font16;
+            color: $gray900;
+        }
+
+
+    }
+}
+
+.info-card {
+    width: 330px;
+    border-radius: 6px;
+    border: 1px solid $gray200;
+    background: $white;
+    padding: 15px;
+    margin-bottom: 15px;
+
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+
+        .title {
+            font-weight: 700;
+            font-size: $font12;
+            line-height: $font16;
+            color: $black;
+        }
+
+        .text {
+            font-size: $font12;
+            line-height: $font16;
+            color: $gray900;
+        }
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    .line {
+        border-bottom: 1px solid $gray200;
+        margin: 12px 0;
+    }
+}
