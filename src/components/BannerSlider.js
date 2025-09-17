@@ -91,7 +91,7 @@ export default function BannerSlider({
     };
 
     const getImageSource = (item) => {
-        return item?.thumbnailImageUrl || '';
+        return item?.thumbnailImageUrl || null;
     };
 
     if (!banners || banners.length === 0) return null;
@@ -115,12 +115,14 @@ export default function BannerSlider({
                             transform: banners.length > 1 ? `translateX(-${currentIndex * 100}%)` : 'translateX(0%)',
                         }}
                     >
-                        <img
-                            src={getImageSource(item)}
-                            alt={`배너 ${index + 1}`}
-                            onClick={() => handlePressBanner(item)}
-                            onError={() => console.warn('배너 이미지 로딩 실패')}
-                        />
+                        {getImageSource(item) && (
+                            <img
+                                src={getImageSource(item)}
+                                alt={`배너 ${index + 1}`}
+                                onClick={() => handlePressBanner(item)}
+                                onError={() => console.warn('배너 이미지 로딩 실패')}
+                            />
+                        )}
                     </div>
                 ))}
             </div>

@@ -296,6 +296,268 @@ window.checkPaymentComplete = async (orderNumber) => {
 };
 
 /**
+ * 6. 결제 전 최종 검증 함수
+ * @param {string} orderNumber - 주문번호 (선택사항)
+ * @param {number} contextAmount - 결제 페이지에서 전달하는 금액 (선택사항)
+ * @returns {object} - 검증 결과 { success: boolean, amount?: number, error?: string }
+ */
+window.finalPaymentCheck = (orderNumber = null, contextAmount = null) => {
+    try {
+        console.log('[WebViewBridge] finalPaymentCheck 시작:', { orderNumber });
+
+        // 1. 기본 환경 검증
+        const SK = window?.SKYSUNNY || {};
+        const hasValidEnvironment = typeof window !== 'undefined';
+
+        if (!hasValidEnvironment) {
+            return {
+                success: false,
+                error: '결제 환경이 올바르지 않습니다.'
+            };
+        }
+
+        // 2. 주문 정보 검증 - 다양한 소스에서 금액 정보 수집
+        let validatedAmount = null;
+        let validatedOrderId = orderNumber;
+
+        // 여러 소스에서 금액 정보 수집
+        const amountSources = [];
+
+        // 1. 컨텍스트에서 전달된 금액 (최우선)
+        if (contextAmount != null) {
+            const parsedAmount = Number(contextAmount);
+            if (!isNaN(parsedAmount) && parsedAmount > 0) {
+                amountSources.push({ source: 'contextAmount', value: parsedAmount });
+            }
+        }
+
+        // 2. SKYSUNNY 객체에서 주문 정보 확인
+        if (SK?.order) {
+            const skAmount = SK.order.amount;
+            if (skAmount != null) {
+                const parsedAmount = Number(skAmount);
+                if (!isNaN(parsedAmount) && parsedAmount > 0) {
+                    amountSources.push({ source: 'SKYSUNNY.order.amount', value: parsedAmount });
+                }
+            }
+            validatedOrderId = validatedOrderId || SK.order.id;
+        }
+
+        // URL 쿼리에서 주문 정보 확인
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlAmount = urlParams.get('amount');
+        if (urlAmount != null) {
+            const parsedAmount = Number(urlAmount);
+            if (!isNaN(parsedAmount) && parsedAmount > 0) {
+                amountSources.push({ source: 'URL.amount', value: parsedAmount });
+            }
+        }
+
+        if (!validatedOrderId) {
+            validatedOrderId = urlParams.get('orderId') || urlParams.get('orderNumber');
+        }
+
+        // 추가 주문번호 소스 확인
+        if (!validatedOrderId) {
+            // sessionStorage에서 확인
+            try {
+                const draftStr = sessionStorage.getItem('toss:draft');
+                if (draftStr) {
+                    const draft = JSON.parse(draftStr);
+                    validatedOrderId = draft?.orderNumber || draft?.data?.orderNumber;
+                }
+            } catch (e) {
+                console.warn('[WebViewBridge] sessionStorage draft parse error:', e);
+            }
+        }
+
+        if (!validatedOrderId) {
+            // localStorage에서 확인
+            validatedOrderId = localStorage.getItem('lastOrderNumber');
+        }
+
+        // 전역 변수에서 금액 확인 (결제 페이지에서 계산된 값들)
+        if (typeof window !== 'undefined') {
+            // CheckPaymentToss에서 사용하는 finalAmount
+            if (window.finalAmount != null) {
+                const parsedAmount = Number(window.finalAmount);
+                if (!isNaN(parsedAmount) && parsedAmount > 0) {
+                    amountSources.push({ source: 'window.finalAmount', value: parsedAmount });
+                }
+            }
+
+            // 기타 가능한 금액 변수들
+            if (window.paymentAmount != null) {
+                const parsedAmount = Number(window.paymentAmount);
+                if (!isNaN(parsedAmount) && parsedAmount > 0) {
+                    amountSources.push({ source: 'window.paymentAmount', value: parsedAmount });
+                }
+            }
+        }
+
+        // 가장 신뢰할 수 있는 금액 선택 (우선순위: contextAmount > window.finalAmount > SKYSUNNY > URL)
+        if (amountSources.length > 0) {
+            const priorityOrder = ['contextAmount', 'window.finalAmount', 'window.paymentAmount', 'SKYSUNNY.order.amount', 'URL.amount'];
+
+            for (const priority of priorityOrder) {
+                const found = amountSources.find(source => source.source === priority);
+                if (found) {
+                    validatedAmount = found.value;
+                    break;
+                }
+            }
+
+            // 우선순위에 없는 경우 첫 번째 값 사용
+            if (validatedAmount === null) {
+                validatedAmount = amountSources[0].value;
+            }
+        }
+
+        console.log('[WebViewBridge] finalPaymentCheck - 금액 소스들:', amountSources);
+        console.log('[WebViewBridge] finalPaymentCheck - 선택된 금액:', validatedAmount);
+
+        // 3. 금액 검증
+        if (validatedAmount === null || validatedAmount <= 0) {
+            console.warn('[WebViewBridge] finalPaymentCheck - 유효한 금액을 찾을 수 없음:', {
+                skysunnyAmount: SK?.order?.amount,
+                urlAmount: new URLSearchParams(window.location.search).get('amount'),
+                validatedAmount
+            });
+            return {
+                success: false,
+                error: '결제 금액을 확인할 수 없습니다. 페이지를 새로고침해주세요.'
+            };
+        }
+
+        if (validatedAmount > 10000000) { // 1천만원 초과 방지
+            return {
+                success: false,
+                error: '결제 금액이 너무 큽니다. 고객센터에 문의해주세요.'
+            };
+        }
+
+        // 4. 주문번호 검증 (선택적)
+        if (validatedOrderId && validatedOrderId.length < 3) {
+            console.warn('[WebViewBridge] finalPaymentCheck - 주문번호가 너무 짧음:', validatedOrderId);
+            return {
+                success: false,
+                error: '주문번호가 올바르지 않습니다.'
+            };
+        }
+
+        // 주문번호가 없는 경우 임시 생성 (결제 시스템에서 자동 생성되는 경우 대비)
+        if (!validatedOrderId) {
+            validatedOrderId = `temp_order_${Date.now()}`;
+            console.log('[WebViewBridge] finalPaymentCheck - 임시 주문번호 생성:', validatedOrderId);
+        }
+
+        // 5. 네트워크 상태 검증
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return {
+                success: false,
+                error: '네트워크 연결을 확인해주세요.'
+            };
+        }
+
+        // 6. 중복 결제 방지 (세션 스토리지 활용)
+        const lastPaymentKey = `payment_${validatedOrderId}`;
+        const lastPaymentTime = sessionStorage.getItem(lastPaymentKey);
+        const now = Date.now();
+
+        if (lastPaymentTime && (now - parseInt(lastPaymentTime)) < 5000) { // 5초 내 중복 방지
+            return {
+                success: false,
+                error: '이미 결제가 진행 중입니다. 잠시 후 다시 시도해주세요.'
+            };
+        }
+
+        // 7. 결제 진행 시간 기록
+        sessionStorage.setItem(lastPaymentKey, now.toString());
+
+        console.log('[WebViewBridge] finalPaymentCheck 성공:', {
+            orderId: validatedOrderId,
+            amount: validatedAmount
+        });
+
+        return {
+            success: true,
+            amount: validatedAmount,
+            orderId: validatedOrderId
+        };
+
+    } catch (error) {
+        console.error('[WebViewBridge] finalPaymentCheck 오류:', error);
+        return {
+            success: false,
+            error: '결제 검증 중 오류가 발생했습니다.'
+        };
+    }
+};
+
+/**
+ * 7. 결제 디버깅 정보 함수
+ * @returns {object} - 디버깅에 필요한 결제 관련 정보
+ */
+window.debugPaymentInfo = () => {
+    try {
+        const SK = window?.SKYSUNNY || {};
+        const urlParams = new URLSearchParams(window.location.search);
+        const now = new Date();
+
+        const debugInfo = {
+            timestamp: now.toISOString(),
+            environment: {
+                userAgent: navigator.userAgent,
+                url: window.location.href,
+                origin: window.location.origin,
+                isOnline: navigator.onLine,
+                language: navigator.language
+            },
+            skysunny: {
+                available: !!window.SKYSUNNY,
+                userId: SK?.userId || 'not_set',
+                order: SK?.order || null,
+                tossClientKey: SK?.tossClientKey ? '***설정됨***' : 'not_set'
+            },
+            urlParams: {
+                orderId: urlParams.get('orderId'),
+                amount: urlParams.get('amount'),
+                userId: urlParams.get('userId'),
+                tossClientKey: urlParams.get('tossClientKey') ? '***설정됨***' : null
+            },
+            webviewBridge: {
+                hasAskRN: typeof window.__askRN === 'function',
+                hasReactNativeWebView: typeof window.ReactNativeWebView !== 'undefined',
+                availableFunctions: [
+                    'getPaymentDetail',
+                    'updatePayment',
+                    'requestPayment',
+                    'checkPaymentComplete',
+                    'finalPaymentCheck',
+                    'debugPaymentInfo'
+                ].filter(fn => typeof window[fn] === 'function')
+            },
+            sessionStorage: {
+                paymentKeys: Object.keys(sessionStorage).filter(key => key.startsWith('payment_'))
+            },
+            localStorage: {
+                paymentKeys: Object.keys(localStorage).filter(key => key.startsWith('payment_'))
+            }
+        };
+
+        console.log('[WebViewBridge] 디버깅 정보:', debugInfo);
+        return debugInfo;
+
+    } catch (error) {
+        console.error('[WebViewBridge] debugPaymentInfo 오류:', error);
+        return {
+            error: '디버깅 정보 수집 중 오류가 발생했습니다.',
+            timestamp: new Date().toISOString()
+        };
+    }
+};
+
+/**
  * 웹뷰 브리지 초기화 함수
  * 앱 시작 시 한 번 호출하여 전역 함수들을 등록
  */
@@ -318,6 +580,8 @@ export const initWebViewBridge = () => {
     console.log('- window.updatePayment(orderNumber, data) - 결제 정보 업데이트');
     console.log('- window.requestPayment(orderNumber, data) - 구매 요청');
     console.log('- window.checkPaymentComplete(orderNumber) - 결제 완료 확인');
+    console.log('- window.finalPaymentCheck(orderNumber) - 결제 전 최종 검증');
+    console.log('- window.debugPaymentInfo() - 결제 디버깅 정보 조회');
 };
 
 // 브라우저 환경에서 즉시 초기화

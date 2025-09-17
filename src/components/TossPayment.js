@@ -223,14 +223,23 @@ const TossPayment = () => {
     // 6) 결제 요청
     const handlePayment = async () => {
         try {
+            // 1. 결제 전 최종 검증
+            const checkResult = window.finalPaymentCheck(order.id, order.amount);
+            if (!checkResult.success) {
+                alert(checkResult.error);
+                return;
+            }
+
             if (!paymentWidget) {
                 alert("결제 위젯 준비 중입니다. 잠시 후 다시 시도하세요.");
                 return;
             }
 
-            const amount = Number.isFinite(order.amount) ? order.amount : 0;
+            // 2. 토스 결제 요청 시 검증된 금액 사용
+            const paymentAmount = checkResult.amount;
+            const amount = Number.isFinite(paymentAmount) ? paymentAmount : 0;
             if (!amount || amount <= 0) {
-                console.error("[TOSS] invalid amount:", order.amount);
+                console.error("[TOSS] invalid amount:", paymentAmount);
                 alert("결제 금액이 올바르지 않습니다.");
                 return;
             }
@@ -248,6 +257,23 @@ const TossPayment = () => {
                 return;
             }
 
+            // 결제 정보 업데이트 (구매하기 버튼 클릭 시)
+            try {
+                console.log("[TOSS] 결제 정보 업데이트 중...");
+                await window.updatePayment(orderId, {
+                    amount: amount,
+                    orderName: order.name,
+                    customerName: order.customerName,
+                    customerEmail: order.customerEmail,
+                    paymentMethod: 'toss',
+                    timestamp: Date.now()
+                });
+                console.log("[TOSS] 결제 정보 업데이트 완료");
+            } catch (updateErr) {
+                console.warn("[TOSS] 결제 정보 업데이트 실패:", updateErr);
+                // 업데이트 실패해도 결제는 진행
+            }
+
             // 데스크톱에서 커스텀 스킴 경고 (보정 후엔 거의 해당 없음)
             const isDesktop =
                 typeof window !== "undefined" && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -260,33 +286,30 @@ const TossPayment = () => {
                 orderName: order.name,
                 customerName: order.customerName,
                 customerEmail: order.customerEmail,
+                amount: amount, // 서버에서 검증된 금액 사용
                 successUrl,
                 failUrl,
             };
             console.log("[TOSS] requestPayment →", payload);
 
+            // 3. 디버깅이 필요한 경우
+            console.log('결제 정보:', window.debugPaymentInfo());
+
+            // 4. 토스페이먼츠 결제 요청
             await paymentWidget.requestPayment(payload);
             console.log("[TOSS] requestPayment: navigation triggered");
         } catch (err) {
-            const plain = (() => {
-                try {
-                    return JSON.stringify(err, Object.getOwnPropertyNames(err));
-                } catch {
-                    return String(err);
-                }
-            })();
-            console.error("[TOSS] requestPayment error RAW:", err);
-            console.error("[TOSS] requestPayment error JSON:", plain);
+            console.error("[TOSS] requestPayment error:", err);
 
-            const msg =
-                err?.message ||
-                err?.error?.message ||
-                err?.response?.data?.message ||
-                "결제 요청 중 오류가 발생했습니다.";
-            const code =
-                err?.code || err?.errorCode || err?.response?.data?.code || err?.name;
+            // 사용자 취소는 조용히 처리
+            if (err?.code === 'USER_CANCEL') {
+                console.log("[TOSS] 사용자 결제 취소");
+                return;
+            }
 
-            alert(`결제 요청 중 오류가 발생했습니다.\ncode=${code || "unknown"}\nmsg=${msg}`);
+            const msg = err?.message || "결제 요청 중 오류가 발생했습니다.";
+            const code = err?.code || err?.name || "unknown";
+            alert(`결제 요청 중 오류가 발생했습니다.\ncode=${code}\nmsg=${msg}`);
         }
     };
 

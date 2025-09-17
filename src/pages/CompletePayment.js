@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import infoIcon from "../img/home/payment.png";
 import '../styles/main.scss';
+// webviewBridge 유틸리티 import
+import { sendToRN } from '../utils/webviewBridge.js';
 
 // 금액 포맷
 const toMoney = (v) => {
@@ -155,62 +157,103 @@ export default function CompletePayment() {
         return finalOrderNumber;
     }, []);
 
-    // 2) RN에서 결제 완료 데이터 받기
+    // 2) 결제 완료 데이터 로드 (URL 파라미터 우선, 필요시 RN에서 추가 데이터 요청)
     useEffect(() => {
         let mounted = true;
 
         const load = async () => {
-            console.log('[CompletePayment] RN에서 결제 완료 데이터를 받는 중...');
+            console.log('[CompletePayment] 결제 완료 데이터 로드 시작...');
 
-            // RN에서 결제 완료 데이터를 받기 위한 이벤트 리스너
-            const handlePaymentComplete = (event) => {
-                try {
-                    const paymentData = event.detail || event.data || event;
-                    console.log('[CompletePayment] RN에서 받은 결제 완료 데이터:', paymentData);
-
-                    if (paymentData && paymentData.orderNumber) {
-                        setData(paymentData);
-                        setLoading(false);
-                    } else {
-                        console.warn('[CompletePayment] 결제 완료 데이터가 올바르지 않습니다:', paymentData);
-                        setErrMsg('결제 완료 데이터를 받지 못했습니다.');
-                        setLoading(false);
-                    }
-                } catch (error) {
-                    console.error('[CompletePayment] 결제 완료 데이터 처리 오류:', error);
-                    setErrMsg('결제 완료 데이터 처리 중 오류가 발생했습니다.');
-                    setLoading(false);
-                }
-            };
-
-            // 다양한 이벤트 리스너 등록
-            document.addEventListener('payment:complete', handlePaymentComplete);
-            document.addEventListener('skysunny:payment:complete', handlePaymentComplete);
-            window.addEventListener('message', (event) => {
-                if (event.data && event.data.type === 'PAYMENT_COMPLETE') {
-                    handlePaymentComplete(event);
-                }
-            });
-
-            // RN 브리지 콜백 등록
-            if (typeof window.__askRN === 'function') {
-                window.__askRN('REQUEST_PAYMENT_COMPLETE', { orderNumber });
+            if (!orderNumber) {
+                console.error('[CompletePayment] orderNumber가 없습니다.');
+                setErrMsg('주문번호를 찾을 수 없습니다.');
+                setLoading(false);
+                return;
             }
 
-            // 타임아웃 설정 (10초 후 에러 처리)
-            const timeout = setTimeout(() => {
+            // 1단계: URL 파라미터에서 기본 결제 정보 추출
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlPaymentData = {
+                orderNumber: orderNumber,
+                paymentAmount: urlParams.get('amount') ? Number(urlParams.get('amount')) : null,
+                paymentKey: urlParams.get('paymentKey'),
+                // 토스 결제 성공 시 기본 정보
+                storeName: urlParams.get('storeName') || '매장',
+                passType: urlParams.get('passType') || 'cash',
+                productInfo: urlParams.get('productName') || '상품',
+                paidAt: new Date().toLocaleString('ko-KR'),
+                couponAmount: 0
+            };
+
+            console.log('[CompletePayment] URL에서 추출한 결제 데이터:', urlPaymentData);
+
+            // 2단계: sessionStorage에서 추가 정보 확인
+            let sessionData = {};
+            try {
+                const draftStr = sessionStorage.getItem('toss:draft');
+                if (draftStr) {
+                    const draft = JSON.parse(draftStr);
+                    sessionData = {
+                        storeName: draft.storeName || sessionData.storeName,
+                        passType: draft.passKind || draft.passType || sessionData.passType,
+                        productInfo: draft.productName || sessionData.productInfo,
+                        paymentAmount: draft.finalAmount || sessionData.paymentAmount,
+                        validDays: draft.validDays || '30일',
+                        usageInfo: draft.usageInfo || '이용정보'
+                    };
+                    console.log('[CompletePayment] sessionStorage에서 추가 정보:', sessionData);
+                }
+            } catch (e) {
+                console.warn('[CompletePayment] sessionStorage 파싱 오류:', e);
+            }
+
+            // 3단계: 기본 데이터 병합
+            const basicPaymentData = {
+                ...urlPaymentData,
+                ...sessionData,
+                // 필수 필드 기본값 설정
+                storeName: sessionData.storeName || urlPaymentData.storeName || '매장',
+                passType: sessionData.passType || urlPaymentData.passType || 'cash',
+                productInfo: sessionData.productInfo || urlPaymentData.productInfo || '상품',
+                paymentAmount: sessionData.paymentAmount || urlPaymentData.paymentAmount || 0,
+                validDays: sessionData.validDays || '30일',
+                usageInfo: sessionData.usageInfo || '이용정보'
+            };
+
+            console.log('[CompletePayment] 병합된 기본 결제 데이터:', basicPaymentData);
+
+            // 4단계: 기본 데이터가 충분하면 바로 표시, 아니면 RN에서 추가 데이터 요청
+            if (basicPaymentData.paymentAmount && basicPaymentData.paymentAmount > 0) {
+                console.log('[CompletePayment] 기본 데이터로 결제 완료 화면 표시');
+                setData(basicPaymentData);
+                setLoading(false);
+                return;
+            }
+
+            // 5단계: RN에서 추가 데이터 요청
+            console.log('[CompletePayment] RN에서 추가 결제 데이터 요청...');
+            try {
+                const rnPaymentData = await sendToRN('REQUEST_PAYMENT_COMPLETE', { orderNumber }, 15000);
+                console.log('[CompletePayment] RN에서 받은 추가 결제 데이터:', rnPaymentData);
+
                 if (mounted) {
-                    console.warn('[CompletePayment] 결제 완료 데이터 수신 타임아웃');
-                    setErrMsg('결제 완료 데이터를 받는 데 시간이 오래 걸리고 있습니다. 잠시 후 다시 시도해주세요.');
+                    const finalData = {
+                        ...basicPaymentData,
+                        ...rnPaymentData,
+                        orderNumber: orderNumber // orderNumber는 항상 유지
+                    };
+                    console.log('[CompletePayment] 최종 결제 데이터:', finalData);
+                    setData(finalData);
                     setLoading(false);
                 }
-            }, 10000);
-
-            return () => {
-                document.removeEventListener('payment:complete', handlePaymentComplete);
-                document.removeEventListener('skysunny:payment:complete', handlePaymentComplete);
-                clearTimeout(timeout);
-            };
+            } catch (error) {
+                console.warn('[CompletePayment] RN 데이터 요청 실패, 기본 데이터 사용:', error);
+                if (mounted) {
+                    // RN 요청 실패해도 기본 데이터로 표시
+                    setData(basicPaymentData);
+                    setLoading(false);
+                }
+            }
         };
 
         load();
@@ -240,18 +283,71 @@ export default function CompletePayment() {
         }
     };
 
-    // 4) 입장하기 → 같은 도메인의 /qr-code로 이동 (표시용 정보 쿼리로 전달)
+    // 4) 입장하기 → 같은 도메인의 /qr-code로 이동 (QR 코드 페이지가 기대하는 파라미터 형식으로 전달)
     const goQr = () => {
         if (typeof window === 'undefined' || !data) return;
+
+        // QR 페이지에서 사용할 데이터를 미리 준비
+        const qrPayload = {
+            // QR 코드 기본 정보 (실제 API 응답과 유사한 구조로 구성)
+            qrData: {
+                usageSeat: data.seatName || data.seatNumber || null,
+                wifiId: window.SKYSUNNY?.wifiSsid || null,
+                wifiPassword: window.SKYSUNNY?.wifiPassword || null,
+                entrancePassword: window.SKYSUNNY?.entrancePassword || null,
+                imageUrl: null // QR 이미지는 API에서 받아와야 함
+            },
+            orderDetails: {
+                storeName: data.storeName || window.SKYSUNNY?.storeName || null,
+                passType: data.passType || null,
+                productInfo: data.productInfo || null
+            },
+            attachedInfo: {
+                usageInfo: data.usageInfo || data.validDays || null,
+                expireText: data.expireText || null,
+                remainingInfo: data.remainingInfo || null
+            },
+            qrIdentifier: {
+                orderId: data.orderNumber || orderNumber || null,
+                passId: null,
+                aggregateId: data.orderNumber || orderNumber || null,
+                timestamp: Math.floor(Date.now() / 1000) + (30 * 60) // 30분 후 만료
+            }
+        };
+
+        // sessionStorage에 QR 데이터 저장 (QR 페이지에서 사용)
+        try {
+            sessionStorage.setItem('qr:payload', JSON.stringify(qrPayload));
+            console.log('[CompletePayment] QR 데이터 sessionStorage 저장:', qrPayload);
+        } catch (e) {
+            console.warn('[CompletePayment] QR 데이터 sessionStorage 저장 실패:', e);
+        }
+
+        // QrCode.js가 기대하는 파라미터 형식으로 전달
         const p = new URLSearchParams({
-            orderNumber: String(data.orderNumber || orderNumber || ''),
+            // QrCode.js의 getQuery()에서 찾는 파라미터들
+            aggregateId: String(data.orderNumber || orderNumber || ''), // orderNumber를 aggregateId로 전달
+            id: String(data.orderNumber || orderNumber || ''), // 백업용
+            token: window.SKYSUNNY?.accessToken || window.SKYSUNNY?.token || localStorage.getItem('accessToken') || '', // 토큰이 있으면 전달
+            storeId: String(window.SKYSUNNY?.storeId || ''), // 매장 ID
+
+            // 추가 정보 (QR 페이지에서 직접 사용하지는 않지만 디버깅용)
             storeName: data.storeName || '',
             passType: data.passType || '',
-            description: data.productInfo || '',
+            productInfo: data.productInfo || '',
             amount: String(data.paymentAmount ?? ''),
-            paidAt: data.paidAt || '',
-            address: '', // 주소가 필요하면 window.SKYSUNNY.address 등으로 채워 넣으세요
+            paidAt: data.paidAt || ''
         });
+
+        console.log('[CompletePayment] QR 페이지로 이동:', {
+            orderNumber: data.orderNumber || orderNumber,
+            aggregateId: data.orderNumber || orderNumber,
+            token: (window.SKYSUNNY?.accessToken || localStorage.getItem('accessToken')) ? 'present' : 'missing',
+            storeId: window.SKYSUNNY?.storeId,
+            qrPayload: qrPayload,
+            url: `${window.location.origin}/qr-code?${p.toString()}`
+        });
+
         const base = window.location.origin;
         window.location.assign(`${base}/qr-code?${p.toString()}`);
     };

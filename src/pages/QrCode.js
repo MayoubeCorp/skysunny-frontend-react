@@ -289,25 +289,48 @@ export default function QrCode({ navigate }) {
 
             const norm = normalizeResult(data);
 
+            // 기존 데이터와 병합 (sessionStorage 데이터가 있으면 우선 사용하되, API에서 받은 QR 이미지는 업데이트)
+            const mergedQrData = {
+                ...(qrData || {}), // 기존 데이터 유지
+                ...norm.qrData, // API 데이터로 덮어쓰기
+                // QR 이미지는 API에서만 받을 수 있으므로 항상 API 데이터 사용
+                imageUrl: norm.qrData?.imageUrl || qrData?.imageUrl || null
+            };
+
+            const mergedOrderDetails = {
+                ...(orderDetails || {}),
+                ...norm.orderDetails
+            };
+
+            const mergedAttachedInfo = {
+                ...(attachedInfo || {}),
+                ...norm.attachedInfo
+            };
+
+            const mergedQrIdentifier = {
+                ...(qrIdentifier || {}),
+                ...norm.qrIdentifier
+            };
+
             // 가독성 좋은 요약 로그
-            console.groupCollapsed("[QrCode] normalizeResult");
+            console.groupCollapsed("[QrCode] normalizeResult (merged)");
             console.table({
-                usageSeat: norm.qrData?.usageSeat,
-                wifiId: norm.qrData?.wifiId,
-                wifiPassword: norm.qrData?.wifiPassword,
-                entrancePassword: norm.qrData?.entrancePassword,
-                imageUrl: (norm.qrData?.imageUrl || "").slice(0, 60),
+                usageSeat: mergedQrData?.usageSeat,
+                wifiId: mergedQrData?.wifiId,
+                wifiPassword: mergedQrData?.wifiPassword,
+                entrancePassword: mergedQrData?.entrancePassword,
+                imageUrl: (mergedQrData?.imageUrl || "").slice(0, 60),
             });
-            console.table(norm.orderDetails);
-            console.table(norm.attachedInfo);
-            console.table(norm.qrIdentifier);
+            console.table(mergedOrderDetails);
+            console.table(mergedAttachedInfo);
+            console.table(mergedQrIdentifier);
             console.log("computed remainSec =", norm.remainSec);
             console.groupEnd();
 
-            setQrData(norm.qrData || null);
-            setOrderDetails(norm.orderDetails || null);
-            setAttachedInfo(norm.attachedInfo || null);
-            setQrIdentifier(norm.qrIdentifier || null);
+            setQrData(mergedQrData);
+            setOrderDetails(mergedOrderDetails);
+            setAttachedInfo(mergedAttachedInfo);
+            setQrIdentifier(mergedQrIdentifier);
 
             if (Number.isFinite(norm.remainSec)) {
                 setRemainSec(Math.max(0, Math.ceil(norm.remainSec)));
@@ -389,8 +412,41 @@ export default function QrCode({ navigate }) {
         };
     }, [boot.aggregateId, boot.token]);
 
-    /** 최초 로드: ID가 있으면 즉시 호출, 없으면 RN에 요청 */
+    /** 최초 로드: sessionStorage 데이터 우선, 그 다음 ID로 API 호출, 없으면 RN에 요청 */
     useEffect(() => {
+        // 1단계: sessionStorage에서 QR 데이터 확인 (결제 완료 페이지에서 저장한 데이터)
+        try {
+            const qrPayloadStr = sessionStorage.getItem('qr:payload');
+            if (qrPayloadStr) {
+                const qrPayload = JSON.parse(qrPayloadStr);
+                log("sessionStorage QR 데이터 발견:", qrPayload);
+
+                // sessionStorage 데이터로 즉시 UI 업데이트
+                setQrData(qrPayload.qrData || null);
+                setOrderDetails(qrPayload.orderDetails || null);
+                setAttachedInfo(qrPayload.attachedInfo || null);
+                setQrIdentifier(qrPayload.qrIdentifier || null);
+
+                if (qrPayload.qrIdentifier?.timestamp) {
+                    const diffSec = Math.max(0, Math.ceil(qrPayload.qrIdentifier.timestamp - Date.now() / 1000));
+                    setRemainSec(diffSec);
+                }
+
+                // sessionStorage 데이터 사용 후 정리
+                sessionStorage.removeItem('qr:payload');
+
+                // QR 이미지는 여전히 API에서 받아와야 하므로 API 호출 진행
+                if (boot.aggregateId) {
+                    log("sessionStorage 데이터 사용 후 QR 이미지를 위한 API 호출");
+                    fetchQr(boot.aggregateId, boot.token);
+                }
+                return;
+            }
+        } catch (e) {
+            log("sessionStorage QR 데이터 파싱 오류:", e);
+        }
+
+        // 2단계: aggregateId가 있으면 API 호출
         if (boot.aggregateId) {
             log("boot aggregateId present → fetch");
             fetchQr(boot.aggregateId, boot.token);
