@@ -119,12 +119,24 @@ export default function CheckPaymentToss() {
     );
 
     const finalAmount = useMemo(() => {
+        let result;
         if (passKind === 'studyroom') {
             const base = normalizedStudy?.usageAmountValue ?? 0;
-            return Math.max(base - discount, 0);
+            result = Math.max(base - discount, 0);
+        } else {
+            result = Math.max(legacyPrice - discount, 0);
         }
-        return Math.max(legacyPrice - discount, 0);
-    }, [passKind, normalizedStudy, legacyPrice, discount]);
+
+        console.log('[CheckPaymentToss] finalAmount 계산:', {
+            passKind,
+            legacyPrice,
+            discount,
+            result,
+            ticketPrice: ticketInfo?.selectedTicket?.price
+        });
+
+        return result;
+    }, [passKind, normalizedStudy, legacyPrice, discount, ticketInfo]);
 
     const finalAmountText = useMemo(() => {
         if (passKind === 'studyroom') {
@@ -138,10 +150,14 @@ export default function CheckPaymentToss() {
     useEffect(() => {
         const onInit = (e) => {
             console.log('[CheckPaymentToss:web] skysunny:init detail =', e.detail);
+            console.log('[CheckPaymentToss:web] selectedTicket 정보:', e.detail?.selectedTicket);
             setTicketInfo(e.detail);
         };
         document.addEventListener('skysunny:init', onInit);
-        if (window.SKYSUNNY) onInit({ detail: window.SKYSUNNY });
+        if (window.SKYSUNNY) {
+            console.log('[CheckPaymentToss:web] window.SKYSUNNY 즉시 설정:', window.SKYSUNNY);
+            onInit({ detail: window.SKYSUNNY });
+        }
 
         return () => {
             document.removeEventListener('skysunny:init', onInit);
@@ -165,10 +181,17 @@ export default function CheckPaymentToss() {
                 console.log('[CheckPaymentToss] clientKey:', clientKey);
                 console.log('[CheckPaymentToss] customerKey:', customerKey);
                 console.log('[CheckPaymentToss] finalAmount:', finalAmount);
+                console.log('[CheckPaymentToss] ticketInfo:', ticketInfo);
 
                 // 필수 값 검증
                 if (!clientKey || !customerKey) {
                     throw new Error('clientKey 또는 customerKey가 없습니다');
+                }
+
+                // finalAmount가 0이거나 없으면 초기화 지연
+                if (!finalAmount || finalAmount <= 0) {
+                    console.log('[CheckPaymentToss] finalAmount가 아직 계산되지 않음, 초기화 지연');
+                    return;
                 }
 
                 // DOM 요소가 생성될 때까지 대기 (최대 3초)
@@ -208,12 +231,24 @@ export default function CheckPaymentToss() {
                 console.log('[CheckPaymentToss] PaymentWidget 로드 성공');
 
                 // 결제 방법 위젯 렌더링
-                console.log('[CheckPaymentToss] renderPaymentMethods 호출...');
-                const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
-                    value: finalAmount || 1000
+                const widgetAmount = finalAmount;
+                console.log('[CheckPaymentToss] renderPaymentMethods 호출...', {
+                    finalAmount,
+                    widgetAmount,
+                    legacyPrice: parseAmount(ticketInfo?.selectedTicket?.price),
+                    ticketPrice: ticketInfo?.selectedTicket?.price,
+                    ticketInfo: ticketInfo?.selectedTicket
                 });
 
-                console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료');
+                if (widgetAmount <= 0) {
+                    throw new Error(`유효하지 않은 결제 금액: ${widgetAmount}`);
+                }
+
+                const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
+                    value: widgetAmount
+                });
+
+                console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료, 설정된 금액:', widgetAmount);
 
                 // 약관 동의 위젯 렌더링
                 console.log('[CheckPaymentToss] renderAgreement 호출...');
@@ -279,7 +314,7 @@ export default function CheckPaymentToss() {
                 console.warn('[CheckPaymentToss] 위젯 정리 중 오류:', error);
             }
         };
-    }, [clientKey, customerKey, finalAmount]);
+    }, [clientKey, customerKey, finalAmount, ticketInfo]);
 
     // 금액 변경 시 위젯 업데이트
     useEffect(() => {
@@ -388,13 +423,37 @@ export default function CheckPaymentToss() {
             const draft = await requestDraftViaRN();
             console.log('[CheckPaymentToss] 임시 주문 생성 완료:', draft);
 
-            // 2. 결제 정보 업데이트
-            // sendToRN은 data 객체를 직접 반환하므로 orderNumber를 바로 접근
-            const orderNumber = draft?.orderNumber || `order_${Date.now()}`;
+            // 2. 결제 정보를 sessionStorage에 저장 (결제 완료 페이지에서 사용)
+            const paymentInfo = {
+                orderNumber: draft?.orderNumber || `order_${Date.now()}`,
+                storeName: SK?.storeName || ticketInfo?.storeName,
+                passKind: passKind,
+                passType: passKind,
+                productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name,
+                finalAmount: finalAmount,
+                couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
+                timestamp: Date.now()
+            };
 
             try {
+                sessionStorage.setItem('toss:draft', JSON.stringify(paymentInfo));
+                console.log('[CheckPaymentToss] 결제 정보 sessionStorage 저장:', paymentInfo);
+            } catch (e) {
+                console.warn('[CheckPaymentToss] sessionStorage 저장 실패:', e);
+            }
+
+            // 3. 결제 정보 업데이트
+            // sendToRN은 data 객체를 직접 반환하므로 orderNumber를 바로 접근
+            const orderNumber = paymentInfo.orderNumber;
+
+            try {
+                console.log('[CheckPaymentToss] 결제 정보 업데이트 중...');
                 await window.updatePayment(orderNumber, {
                     amount: amount,
+                    orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
+                    customerName: SK?.customerName || ticketInfo?.customerName || '고객',
+                    customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
+                    paymentMethod: 'toss',
                     couponId: selectedCoupon?.id || null,
                     couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
                     timestamp: Date.now()
@@ -409,11 +468,40 @@ export default function CheckPaymentToss() {
             const orderId = orderNumber;
             const orderName = SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품';
 
-            // 성공/실패 URL 설정
-            const webSuccessUrl = `${window.location.origin}/complete-payment?orderNumber=${encodeURIComponent(orderNumber)}&amount=${amount}`;
+            // 성공/실패 URL 설정 (결제 완료 페이지에서 사용할 정보 포함)
+            const successParams = new URLSearchParams({
+                orderNumber: orderNumber,
+                amount: amount,
+                storeName: paymentInfo.storeName || '',
+                passType: paymentInfo.passType || '',
+                productName: paymentInfo.productName || ''
+            });
+            const webSuccessUrl = `${window.location.origin}/complete-payment?${successParams.toString()}`;
             const webFailUrl = `${window.location.origin}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderNumber)}`;
 
             console.log('[CheckPaymentToss] 토스 결제 요청:', { orderId, orderName, amount });
+            console.log('[CheckPaymentToss] 위젯 초기화 시 설정된 금액과 비교:', {
+                currentAmount: amount,
+                lastAmountRef: lastAmountRef.current,
+                finalAmount: finalAmount
+            });
+
+            // 금액 불일치 검증
+            if (Math.abs(amount - lastAmountRef.current) > 1) {
+                console.warn('[CheckPaymentToss] 금액 불일치 감지, 위젯 금액 업데이트 시도');
+                try {
+                    if (paymentMethods) {
+                        paymentMethods.updateAmount({ value: amount });
+                        lastAmountRef.current = amount;
+                        console.log('[CheckPaymentToss] 위젯 금액 업데이트 완료:', amount);
+                        // 금액 업데이트 후 잠시 대기
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                } catch (updateError) {
+                    console.error('[CheckPaymentToss] 위젯 금액 업데이트 실패:', updateError);
+                    throw new Error(`결제 금액 불일치: 위젯=${lastAmountRef.current}, 요청=${amount}`);
+                }
+            }
 
             // 4. 토스페이먼츠 공식 결제 요청
             await paymentWidget.requestPayment({
@@ -421,9 +509,9 @@ export default function CheckPaymentToss() {
                 orderName: orderName,
                 successUrl: webSuccessUrl,
                 failUrl: webFailUrl,
-                customerEmail: "customer123@gmail.com",
-                customerName: "김토스",
-                customerMobilePhone: "01012341234",
+                customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "customer@example.com",
+                customerName: SK?.customerName || ticketInfo?.customerName || "고객",
+                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "01012341234",
             });
 
             console.log('[CheckPaymentToss] 토스 결제 완료 - 리다이렉션 진행 중');
