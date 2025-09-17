@@ -9,6 +9,8 @@ import copy from '../img/common/copy.png';
 import bannerImg from '../img/home/bannerexample.png';
 import infoIcon from '../img/home/information.png';
 import '../styles/main.scss';
+// webviewBridge 유틸리티 import
+import { sendToRN } from '../utils/webviewBridge.js';
 
 export default function CheckPaymentToss() {
     const navigate = useNavigate();
@@ -297,148 +299,69 @@ export default function CheckPaymentToss() {
 
     // RN draft 요청
     const needsTarget = (t) => t === 'fix' || t === 'locker';
-    const requestDraftViaRN = () =>
-        new Promise((resolve, reject) => {
-            if (typeof window.__askRN !== 'function') {
-                console.warn('[CheckPaymentToss] RN bridge not found, using fallback');
+    const requestDraftViaRN = async () => {
+        const passId =
+            SK?.selectedTicket?.passId ??
+            ticketInfo?.selectedTicket?.passId ??
+            SK?.selectedTicket?.id ??
+            ticketInfo?.selectedTicket?.id ??
+            null;
 
-                // 브라우저 환경에서의 폴백 처리
-                if (typeof window !== 'undefined' && !window.ReactNativeWebView) {
-                    console.log('[CheckPaymentToss] Browser environment detected, creating mock draft');
+        const providedTarget =
+            SK?.selectedTicket?.targetId ??
+            ticketInfo?.selectedTicket?.targetId ??
+            0;
 
-                    // 모크 응답 생성
-                    setTimeout(() => {
-                        const mockOrderNumber = `mock_order_${Date.now()}`;
-                        const mockResponse = {
-                            ok: true,
-                            orderNumber: mockOrderNumber,
-                            data: {
-                                orderNumber: mockOrderNumber,
-                                amount: finalAmount || 10000,
-                                productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '테스트 상품',
-                                storeName: SK?.storeName || ticketInfo?.storeName || '테스트 매장',
-                                userId: SK?.userId || ticketInfo?.userId || 'test_user',
-                                timestamp: Date.now()
-                            }
-                        };
-                        console.log('[CheckPaymentToss] Mock draft response:', mockResponse);
-                        resolve(mockResponse);
-                    }, 500);
-                    return;
-                }
+        const targetId = needsTarget(passKind) ? Number(providedTarget || 0) : 0;
 
-                reject(new Error('RN bridge not found'));
-                return;
+        if (passKind !== 'studyroom') {
+            if (!passId) {
+                throw new Error('상품 ID(passId)가 없습니다.');
             }
-
-            const passId =
-                SK?.selectedTicket?.passId ??
-                ticketInfo?.selectedTicket?.passId ??
-                SK?.selectedTicket?.id ??
-                ticketInfo?.selectedTicket?.id ??
-                null;
-
-            const providedTarget =
-                SK?.selectedTicket?.targetId ??
-                ticketInfo?.selectedTicket?.targetId ??
-                0;
-
-            const targetId = needsTarget(passKind) ? Number(providedTarget || 0) : 0;
-
-            if (passKind !== 'studyroom') {
-                if (!passId) { reject(new Error('상품 ID(passId)가 없습니다.')); return; }
-                if (needsTarget(passKind) && !targetId) { reject(new Error('좌석/사물함 선택이 필요합니다.')); return; }
+            if (needsTarget(passKind) && !targetId) {
+                throw new Error('좌석/사물함 선택이 필요합니다.');
             }
+        }
 
-            const requestPayload = {
-                // 기본 정보
-                passKind: passKind,
-                passId: passId,
-                targetId: targetId,
-                // 사용자 정보
-                userId: SK?.userId || ticketInfo?.userId || localStorage.getItem('userId') || null,
-                // 좌석 정보 (targetId가 seatId인 경우)
-                seatId: needsTarget(passKind) ? targetId : null,
-                // 매장 정보
-                storeId: SK?.storeId || ticketInfo?.storeId || null,
-                storeName: SK?.storeName || ticketInfo?.storeName || null,
-                // 상품 정보
-                productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || null,
-                price: SK?.selectedTicket?.price || ticketInfo?.selectedTicket?.price || null,
-                // 스터디룸 관련 정보 (studyroom인 경우)
-                roomName: SK?.roomName || ticketInfo?.roomName || null,
-                selectedDate: SK?.selectedDate || ticketInfo?.selectedDate || null,
-                period: SK?.period || ticketInfo?.period || null,
-                usageInfo: SK?.usageInfo || ticketInfo?.usageInfo || null,
-                // 쿠폰 정보
-                couponId: selectedCoupon?.id || null,
-                couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
-                // 결제 정보
-                paymentMethod: 'toss',
-                finalAmount: finalAmount
-            };
+        const requestPayload = {
+            // 기본 정보
+            passKind: passKind,
+            passId: passId,
+            targetId: targetId,
+            // 사용자 정보
+            userId: SK?.userId || ticketInfo?.userId || localStorage.getItem('userId') || null,
+            // 좌석 정보 (targetId가 seatId인 경우)
+            seatId: needsTarget(passKind) ? targetId : null,
+            // 매장 정보
+            storeId: SK?.storeId || ticketInfo?.storeId || null,
+            storeName: SK?.storeName || ticketInfo?.storeName || null,
+            // 상품 정보
+            productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || null,
+            price: SK?.selectedTicket?.price || ticketInfo?.selectedTicket?.price || null,
+            // 스터디룸 관련 정보 (studyroom인 경우)
+            roomName: SK?.roomName || ticketInfo?.roomName || null,
+            selectedDate: SK?.selectedDate || ticketInfo?.selectedDate || null,
+            period: SK?.period || ticketInfo?.period || null,
+            usageInfo: SK?.usageInfo || ticketInfo?.usageInfo || null,
+            // 쿠폰 정보
+            couponId: selectedCoupon?.id || null,
+            couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
+            // 결제 정보
+            paymentMethod: 'toss',
+            finalAmount: finalAmount
+        };
 
-            let settled = false;
-            const done = (fn) => (arg) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                fn(arg);
-            };
-            const resolveOnce = done(resolve);
-            const rejectOnce = done(reject);
+        console.log('[CheckPaymentToss:web] REQUEST_DRAFT → 전체 페이로드:', requestPayload);
 
-            const timer = setTimeout(() => rejectOnce(new Error('RN 응답 타임아웃 (30초) - React Native 앱에서 응답이 없습니다')), 30000);
-
-            console.log('[CheckPaymentToss:web] REQUEST_DRAFT → 전체 페이로드:', requestPayload);
-            console.log('[CheckPaymentToss:web] RN Bridge 함수 존재 여부:', typeof window.__askRN);
-            console.log('[CheckPaymentToss:web] ReactNativeWebView 존재 여부:', !!window.ReactNativeWebView);
-
-            try {
-                window.__askRN('REQUEST_DRAFT', requestPayload);
-                console.log('[CheckPaymentToss:web] REQUEST_DRAFT 호출 완료, 응답 대기 중...');
-            } catch (callError) {
-                console.error('[CheckPaymentToss:web] REQUEST_DRAFT 호출 실패:', callError);
-                rejectOnce(new Error(`RN 브리지 호출 실패: ${callError.message}`));
-                return;
-            }
-
-            // 응답 처리는 기존 CheckPayment.js와 동일한 로직 사용
-            const handleReply = (data) => {
-                console.log('[CheckPaymentToss:web] RN 응답 수신:', data);
-
-                const action = data.action || data.type;
-                const ok = !!data.ok;
-                const orderNumber = data.orderNumber ?? data?.data?.orderNumber ?? data?.payload?.orderNumber ?? null;
-
-                console.log('[CheckPaymentToss:web] 응답 분석:', { action, ok, orderNumber });
-
-                if (action === 'DRAFT_REPLY') {
-                    if (ok && orderNumber) {
-                        console.log('[CheckPaymentToss:web] Draft 생성 성공:', orderNumber);
-                        resolveOnce({ orderNumber, ...data });
-                    } else {
-                        console.error('[CheckPaymentToss:web] Draft 생성 실패:', data.message || 'Draft 생성 실패');
-                        rejectOnce(new Error(data.message || 'Draft 생성 실패'));
-                    }
-                } else {
-                    console.log('[CheckPaymentToss:web] 다른 액션 무시:', action);
-                }
-            };
-
-            const onCustomReply = (e) => handleReply(e.detail);
-            const onWindowMessage = (e) => {
-                try {
-                    const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-                    if (data) handleReply(data);
-                } catch (err) {
-                    console.warn('[CheckPaymentToss:web] message parse error', err);
-                }
-            };
-
-            document.addEventListener('skysunny:reply', onCustomReply);
-            window.addEventListener('message', onWindowMessage);
-        });
+        try {
+            const result = await sendToRN('REQUEST_DRAFT', requestPayload, 30000);
+            console.log('[CheckPaymentToss:web] Draft 생성 성공:', result);
+            return result;
+        } catch (error) {
+            console.error('[CheckPaymentToss:web] Draft 생성 실패:', error);
+            throw error;
+        }
+    };
 
     // 토스페이먼츠 공식 방식: 구매하기 버튼 클릭
     const onClickBuy = async () => {
@@ -466,16 +389,12 @@ export default function CheckPaymentToss() {
             console.log('[CheckPaymentToss] 임시 주문 생성 완료:', draft);
 
             // 2. 결제 정보 업데이트
-            const orderNumber = draft?.orderNumber || draft?.data?.orderNumber || `order_${Date.now()}`;
+            // sendToRN은 data 객체를 직접 반환하므로 orderNumber를 바로 접근
+            const orderNumber = draft?.orderNumber || `order_${Date.now()}`;
 
             try {
-                console.log('[CheckPaymentToss] 결제 정보 업데이트 중...');
                 await window.updatePayment(orderNumber, {
                     amount: amount,
-                    orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
-                    customerName: SK?.customerName || ticketInfo?.customerName || '고객',
-                    customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
-                    paymentMethod: 'toss',
                     couponId: selectedCoupon?.id || null,
                     couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
                     timestamp: Date.now()
@@ -502,9 +421,9 @@ export default function CheckPaymentToss() {
                 orderName: orderName,
                 successUrl: webSuccessUrl,
                 failUrl: webFailUrl,
-                customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "customer@example.com",
-                customerName: SK?.customerName || ticketInfo?.customerName || "고객",
-                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "01012341234",
+                customerEmail: "customer123@gmail.com",
+                customerName: "김토스",
+                customerMobilePhone: "01012341234",
             });
 
             console.log('[CheckPaymentToss] 토스 결제 완료 - 리다이렉션 진행 중');
@@ -520,15 +439,9 @@ export default function CheckPaymentToss() {
             const errorCode = error?.code ||
                 error?.errorCode ||
                 error?.response?.data?.code ||
-                error?.name ||
-                'Error';
+                error?.name;
 
-            // RN 브리지 타임아웃인 경우 더 자세한 안내
-            if (errorMessage.includes('RN 응답 타임아웃')) {
-                alert(`React Native 앱에서 응답이 없습니다.\n\n가능한 원인:\n1. 네트워크 연결 문제\n2. 서버 응답 지연\n3. 앱 내부 처리 오류\n\n앱을 다시 시작하거나 네트워크를 확인해주세요.\n\ncode=${errorCode}\nmsg=${errorMessage}`);
-            } else {
-                alert(`결제 요청 중 오류가 발생했습니다.\ncode=${errorCode}\nmsg=${errorMessage}`);
-            }
+            alert(`결제 요청 중 오류가 발생했습니다.\ncode=${errorCode || "unknown"}\nmsg=${errorMessage}`);
         }
     };
 

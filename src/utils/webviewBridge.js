@@ -100,7 +100,7 @@ const createMockResponse = (action, payload) => {
  * @param {number} timeout - 타임아웃 (ms)
  * @returns {Promise} - 응답 Promise
  */
-const sendToRN = (action, payload = {}, timeout = 30000) => {
+export const sendToRN = (action, payload = {}, timeout = 30000) => {
     return new Promise((resolve, reject) => {
         // RN 브리지가 없는 경우 폴백 처리
         if (typeof window.__askRN !== 'function') {
