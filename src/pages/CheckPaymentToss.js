@@ -1,5 +1,6 @@
-// CheckPaymentToss.js - 웹뷰 방식 토스 결제
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// CheckPaymentToss.js - 토스페이먼츠 공식 SDK 방식
+import { loadPaymentWidget } from "@tosspayments/payment-widget-sdk";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Banner from '../components/BannerSlider';
 import backArrow from '../img/common/backarrow.png';
@@ -13,9 +14,14 @@ export default function CheckPaymentToss() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('toss-pay');
     const [selectedCoupon, setSelectedCoupon] = useState(location.state?.selectedCoupon || null);
     const [ticketInfo, setTicketInfo] = useState(null);
+
+    // 토스 결제 위젯 관련 상태
+    const [paymentWidget, setPaymentWidget] = useState(null);
+    const [paymentMethods, setPaymentMethods] = useState(null);
+    const [isPaymentReady, setIsPaymentReady] = useState(false);
+    const lastAmountRef = useRef(1000); // 기본값으로 초기화
 
     const bannerImages2 = [bannerImg, bannerImg, bannerImg];
 
@@ -23,24 +29,28 @@ export default function CheckPaymentToss() {
 
     const movePage = (path) => navigate(path);
 
-    useEffect(() => {
-        const onInit = (e) => {
-            console.log('[CheckPaymentToss:web] skysunny:init detail =', e.detail);
-            setTicketInfo(e.detail);
-        };
-        document.addEventListener('skysunny:init', onInit);
-        if (window.SKYSUNNY) onInit({ detail: window.SKYSUNNY });
+    // 토스페이먼츠 공식 설정 (올바른 테스트 키 사용)
+    const clientKey = useMemo(() => {
+        // 토스 공식 샌드박스 테스트 키 (사용자 제공 키)
+        const testKey = "test_gck_vZnjEJeQVxm46AgkyPeMrPmOoBN0";
 
-        return () => {
-            document.removeEventListener('skysunny:init', onInit);
-        };
-    }, []);
+        const key = SK?.tossClientKey ||
+            (typeof import.meta !== "undefined" &&
+                (import.meta.env?.VITE_TOSS_CLIENT_KEY_TEST || import.meta.env?.VITE_TOSS_CLIENT_KEY)) ||
+            (typeof process !== "undefined" &&
+                (process.env?.REACT_APP_TOSS_CLIENT_KEY_TEST || process.env?.REACT_APP_TOSS_CLIENT_KEY)) ||
+            testKey;
 
-    useEffect(() => {
-        if ('selectedCoupon' in (location.state || {})) {
-            setSelectedCoupon(location.state.selectedCoupon || null);
-        }
-    }, [location.state]);
+        console.log('[CheckPaymentToss] Using clientKey:', key);
+        return key;
+    }, [SK]);
+
+    const customerKey = useMemo(() => {
+        return SK?.userId ||
+            (typeof localStorage !== "undefined" && localStorage.getItem('userId')) ||
+            (typeof localStorage !== "undefined" && localStorage.getItem('accessToken') && "authenticated_user") ||
+            `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }, [SK]);
 
     // ===== 공통 유틸 =====
     const parseAmount = useCallback((v) => {
@@ -123,17 +133,200 @@ export default function CheckPaymentToss() {
         return `${total.toLocaleString()}원`;
     }, [passKind, normalizedStudy, legacyPrice, discount]);
 
-    // eslint-disable-next-line no-unused-vars
-    const amount = finalAmount || 1000; // 기본값 1000원
+    useEffect(() => {
+        const onInit = (e) => {
+            console.log('[CheckPaymentToss:web] skysunny:init detail =', e.detail);
+            setTicketInfo(e.detail);
+        };
+        document.addEventListener('skysunny:init', onInit);
+        if (window.SKYSUNNY) onInit({ detail: window.SKYSUNNY });
 
-    const successUrl = useMemo(() => SK?.successUrl || 'skysunny://pay/success', [SK]);
-    const failUrl = useMemo(() => SK?.failUrl || 'skysunny://pay/fail', [SK]);
+        return () => {
+            document.removeEventListener('skysunny:init', onInit);
+        };
+    }, []);
+
+    useEffect(() => {
+        if ('selectedCoupon' in (location.state || {})) {
+            setSelectedCoupon(location.state.selectedCoupon || null);
+        }
+    }, [location.state]);
+
+    // 토스페이먼츠 위젯 초기화 (DOM 충돌 방지)
+    useEffect(() => {
+        let isMounted = true;
+        let initTimeout;
+
+        async function initializePaymentWidget() {
+            try {
+                console.log('[CheckPaymentToss] === 토스 결제 위젯 초기화 시작 ===');
+                console.log('[CheckPaymentToss] clientKey:', clientKey);
+                console.log('[CheckPaymentToss] customerKey:', customerKey);
+                console.log('[CheckPaymentToss] finalAmount:', finalAmount);
+
+                // 필수 값 검증
+                if (!clientKey || !customerKey) {
+                    throw new Error('clientKey 또는 customerKey가 없습니다');
+                }
+
+                // DOM 요소가 생성될 때까지 대기 (최대 3초)
+                let retryCount = 0;
+                let paymentMethodElement, agreementElement;
+
+                while (retryCount < 15 && isMounted) {
+                    paymentMethodElement = document.getElementById("payment-method");
+                    agreementElement = document.getElementById("agreement");
+
+                    if (paymentMethodElement && agreementElement) {
+                        console.log('[CheckPaymentToss] DOM 요소 확인 완료');
+                        break;
+                    }
+
+                    console.log(`[CheckPaymentToss] DOM 요소 대기 중... (${retryCount + 1}/15)`);
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    retryCount++;
+                }
+
+                if (!paymentMethodElement || !agreementElement) {
+                    throw new Error('DOM 요소를 찾을 수 없습니다 (timeout)');
+                }
+
+                if (!isMounted) return;
+
+                // 기존 위젯 정리
+                paymentMethodElement.innerHTML = '';
+                agreementElement.innerHTML = '';
+
+                // 토스페이먼츠 위젯 로드
+                console.log('[CheckPaymentToss] loadPaymentWidget 호출...');
+                const paymentWidget = await loadPaymentWidget(clientKey, customerKey);
+
+                if (!isMounted) return;
+
+                console.log('[CheckPaymentToss] PaymentWidget 로드 성공');
+
+                // 결제 방법 위젯 렌더링
+                console.log('[CheckPaymentToss] renderPaymentMethods 호출...');
+                const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
+                    value: finalAmount || 1000
+                });
+
+                console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료');
+
+                // 약관 동의 위젯 렌더링
+                console.log('[CheckPaymentToss] renderAgreement 호출...');
+                paymentWidget.renderAgreement("#agreement");
+
+                console.log('[CheckPaymentToss] Agreement 렌더링 완료');
+
+                if (!isMounted) return;
+
+                // 상태 업데이트
+                setPaymentWidget(paymentWidget);
+                setPaymentMethods(paymentMethodsWidget);
+                setIsPaymentReady(true);
+
+                console.log('[CheckPaymentToss] === 토스 결제 위젯 초기화 완료 ===');
+
+            } catch (error) {
+                console.error('[CheckPaymentToss] ❌ 결제 위젯 초기화 실패:', error);
+
+                if (isMounted) {
+                    setIsPaymentReady(false);
+
+                    // 에러 UI 표시
+                    const paymentMethodElement = document.getElementById("payment-method");
+                    if (paymentMethodElement) {
+                        paymentMethodElement.innerHTML = `
+                            <div style="padding: 20px; text-align: center; color: #ff6b6b; border: 1px solid #ff6b6b; border-radius: 8px; background: #fff5f5;">
+                                <div style="font-weight: bold; margin-bottom: 8px;">⚠️ 결제 위젯 로드 실패</div>
+                                <div style="font-size: 12px; line-height: 1.4;">
+                                    ${error.message}<br/>
+                                    <small style="color: #999;">clientKey: ${clientKey}</small>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+        }
+
+        // 약간의 지연 후 초기화 실행 (DOM이 완전히 준비될 때까지)
+        initTimeout = setTimeout(initializePaymentWidget, 300);
+
+        return () => {
+            isMounted = false;
+            if (initTimeout) {
+                clearTimeout(initTimeout);
+            }
+
+            // 위젯 정리
+            try {
+                const paymentMethodElement = document.getElementById("payment-method");
+                const agreementElement = document.getElementById("agreement");
+
+                if (paymentMethodElement) {
+                    paymentMethodElement.innerHTML = '';
+                }
+                if (agreementElement) {
+                    agreementElement.innerHTML = '';
+                }
+
+                console.log('[CheckPaymentToss] 위젯 정리 완료');
+            } catch (error) {
+                console.warn('[CheckPaymentToss] 위젯 정리 중 오류:', error);
+            }
+        };
+    }, [clientKey, customerKey, finalAmount]);
+
+    // 금액 변경 시 위젯 업데이트
+    useEffect(() => {
+        if (!paymentMethods || !isPaymentReady) return;
+
+        const newAmount = finalAmount || 1000;
+        if (lastAmountRef.current === newAmount) return;
+
+        console.log('[CheckPaymentToss] 결제 금액 업데이트:', { from: lastAmountRef.current, to: newAmount });
+        try {
+            paymentMethods.updateAmount({ value: newAmount });
+            lastAmountRef.current = newAmount;
+        } catch (error) {
+            console.error('[CheckPaymentToss] 금액 업데이트 오류:', error);
+        }
+    }, [finalAmount, paymentMethods, isPaymentReady]);
 
     // RN draft 요청
     const needsTarget = (t) => t === 'fix' || t === 'locker';
     const requestDraftViaRN = () =>
         new Promise((resolve, reject) => {
             if (typeof window.__askRN !== 'function') {
+                console.warn('[CheckPaymentToss] RN bridge not found, using fallback');
+
+                // 브라우저 환경에서의 폴백 처리
+                if (typeof window !== 'undefined' && !window.ReactNativeWebView) {
+                    console.log('[CheckPaymentToss] Browser environment detected, creating mock draft');
+
+                    // 모크 응답 생성
+                    setTimeout(() => {
+                        const mockOrderNumber = `mock_order_${Date.now()}`;
+                        const mockResponse = {
+                            ok: true,
+                            orderNumber: mockOrderNumber,
+                            data: {
+                                orderNumber: mockOrderNumber,
+                                amount: finalAmount || 10000,
+                                productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '테스트 상품',
+                                storeName: SK?.storeName || ticketInfo?.storeName || '테스트 매장',
+                                userId: SK?.userId || ticketInfo?.userId || 'test_user',
+                                timestamp: Date.now()
+                            }
+                        };
+                        console.log('[CheckPaymentToss] Mock draft response:', mockResponse);
+                        resolve(mockResponse);
+                    }, 500);
+                    return;
+                }
+
                 reject(new Error('RN bridge not found'));
                 return;
             }
@@ -181,7 +374,7 @@ export default function CheckPaymentToss() {
                 couponId: selectedCoupon?.id || null,
                 couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
                 // 결제 정보
-                paymentMethod: selectedPaymentMethod,
+                paymentMethod: 'toss',
                 finalAmount: finalAmount
             };
 
@@ -195,23 +388,41 @@ export default function CheckPaymentToss() {
             const resolveOnce = done(resolve);
             const rejectOnce = done(reject);
 
-            const timer = setTimeout(() => rejectOnce(new Error('RN 응답 타임아웃')), 10000);
+            const timer = setTimeout(() => rejectOnce(new Error('RN 응답 타임아웃 (30초) - React Native 앱에서 응답이 없습니다')), 30000);
 
             console.log('[CheckPaymentToss:web] REQUEST_DRAFT → 전체 페이로드:', requestPayload);
-            window.__askRN('REQUEST_DRAFT', requestPayload);
+            console.log('[CheckPaymentToss:web] RN Bridge 함수 존재 여부:', typeof window.__askRN);
+            console.log('[CheckPaymentToss:web] ReactNativeWebView 존재 여부:', !!window.ReactNativeWebView);
+
+            try {
+                window.__askRN('REQUEST_DRAFT', requestPayload);
+                console.log('[CheckPaymentToss:web] REQUEST_DRAFT 호출 완료, 응답 대기 중...');
+            } catch (callError) {
+                console.error('[CheckPaymentToss:web] REQUEST_DRAFT 호출 실패:', callError);
+                rejectOnce(new Error(`RN 브리지 호출 실패: ${callError.message}`));
+                return;
+            }
 
             // 응답 처리는 기존 CheckPayment.js와 동일한 로직 사용
             const handleReply = (data) => {
+                console.log('[CheckPaymentToss:web] RN 응답 수신:', data);
+
                 const action = data.action || data.type;
                 const ok = !!data.ok;
                 const orderNumber = data.orderNumber ?? data?.data?.orderNumber ?? data?.payload?.orderNumber ?? null;
 
+                console.log('[CheckPaymentToss:web] 응답 분석:', { action, ok, orderNumber });
+
                 if (action === 'DRAFT_REPLY') {
                     if (ok && orderNumber) {
+                        console.log('[CheckPaymentToss:web] Draft 생성 성공:', orderNumber);
                         resolveOnce({ orderNumber, ...data });
                     } else {
+                        console.error('[CheckPaymentToss:web] Draft 생성 실패:', data.message || 'Draft 생성 실패');
                         rejectOnce(new Error(data.message || 'Draft 생성 실패'));
                     }
+                } else {
+                    console.log('[CheckPaymentToss:web] 다른 액션 무시:', action);
                 }
             };
 
@@ -229,71 +440,95 @@ export default function CheckPaymentToss() {
             window.addEventListener('message', onWindowMessage);
         });
 
-    // 구매하기 버튼 클릭
+    // 토스페이먼츠 공식 방식: 구매하기 버튼 클릭
     const onClickBuy = async () => {
-        console.log('[CheckPaymentToss:web] 선택된 결제 방법:', selectedPaymentMethod);
+        console.log('[CheckPaymentToss] 구매하기 버튼 클릭');
 
-        // 선택된 결제 방법에 따른 처리
-        if (selectedPaymentMethod === 'toss-pay' || selectedPaymentMethod === 'credit-card') {
+        // 토스 결제 위젯이 준비되지 않은 경우
+        if (!paymentWidget || !isPaymentReady) {
+            alert('결제 위젯 준비 중입니다. 잠시 후 다시 시도하세요.');
+            return;
+        }
+
+        // 결제 금액 검증
+        const amount = finalAmount || 1000;
+        if (!amount || amount <= 0) {
+            console.error('[CheckPaymentToss] 유효하지 않은 결제 금액:', amount);
+            alert('결제 금액이 올바르지 않습니다.');
+            return;
+        }
+
+        try {
+            console.log('[CheckPaymentToss] 임시 주문 생성 중...');
+
+            // 1. 임시 주문 생성
+            const draft = await requestDraftViaRN();
+            console.log('[CheckPaymentToss] 임시 주문 생성 완료:', draft);
+
+            // 2. 결제 정보 업데이트
+            const orderNumber = draft?.orderNumber || draft?.data?.orderNumber || `order_${Date.now()}`;
+
             try {
-                console.log('[CheckPaymentToss:web] onClickBuy → requestDraftViaRN()');
-                const draft = await requestDraftViaRN();
-                console.log('[CheckPaymentToss:web] draft resolved =', draft);
-
-                // draft에 추가 정보 포함
-                const draftWithMeta = {
-                    ...draft,
-                    successUrl: successUrl,
-                    failUrl: failUrl,
-                    timestamp: Date.now(),
-                    userId: SK?.userId || ticketInfo?.userId || localStorage.getItem('userId') || null,
-                    storeId: SK?.storeId || ticketInfo?.storeId || null,
-                    storeName: SK?.storeName || ticketInfo?.storeName || null,
-                    productName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || null,
-                    price: SK?.selectedTicket?.price || ticketInfo?.selectedTicket?.price || null,
+                console.log('[CheckPaymentToss] 결제 정보 업데이트 중...');
+                await window.updatePayment(orderNumber, {
+                    amount: amount,
+                    orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
+                    customerName: SK?.customerName || ticketInfo?.customerName || '고객',
+                    customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
+                    paymentMethod: 'toss',
                     couponId: selectedCoupon?.id || null,
                     couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
-                    finalAmount: finalAmount,
-                    paymentMethod: selectedPaymentMethod
-                };
-
-                // 세션 스토리지에 저장
-                sessionStorage.setItem('PAYMENT_DRAFT', JSON.stringify(draftWithMeta));
-                console.log('[CheckPaymentToss:web] 세션 저장 완료, 토스 결제 진행');
-
-                // 토스 결제 페이지로 이동 (실제 토스 결제 URL)
-                const orderId = `order_${Date.now()}`;
-                const orderName = draftWithMeta.productName || '테스트 상품';
-                const customerName = '홍길동';
-                const customerEmail = 'test@example.com';
-
-                const tossPaymentUrl = `https://pay.toss.im/web/checkout?` +
-                    `amount=${finalAmount}&` +
-                    `orderId=${orderId}&` +
-                    `orderName=${encodeURIComponent(orderName)}&` +
-                    `customerName=${encodeURIComponent(customerName)}&` +
-                    `customerEmail=${customerEmail}&` +
-                    `successUrl=${encodeURIComponent(window.location.origin + '/complete-payment')}&` +
-                    `failUrl=${encodeURIComponent(window.location.origin + '/complete-payment?fail=1')}`;
-
-                console.log('[CheckPaymentToss:web] 토스 결제 URL:', tossPaymentUrl);
-                window.open(tossPaymentUrl, '_blank', 'width=400,height=600');
-
-            } catch (error) {
-                console.error('[CheckPaymentToss:web] onClickBuy 에러:', error);
-                alert(error.message || '결제 준비 중 오류가 발생했습니다.');
+                    timestamp: Date.now()
+                });
+                console.log('[CheckPaymentToss] 결제 정보 업데이트 완료');
+            } catch (updateErr) {
+                console.warn('[CheckPaymentToss] 결제 정보 업데이트 실패:', updateErr);
+                // 업데이트 실패해도 결제는 진행
             }
-        } else {
-            // 다른 결제 방법들
-            const paymentNames = {
-                'payco': 'PAYCO',
-                'kakao-pay': '카카오페이',
-                'naver-pay': '네이버페이',
-                'mobile': '휴대폰 결제'
-            };
 
-            const paymentName = paymentNames[selectedPaymentMethod] || selectedPaymentMethod;
-            alert(`${paymentName} 결제는 현재 준비 중입니다.`);
+            // 3. 토스페이먼츠 공식 결제 요청
+            const orderId = orderNumber;
+            const orderName = SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품';
+
+            // 성공/실패 URL 설정
+            const webSuccessUrl = `${window.location.origin}/complete-payment?orderNumber=${encodeURIComponent(orderNumber)}&amount=${amount}`;
+            const webFailUrl = `${window.location.origin}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderNumber)}`;
+
+            console.log('[CheckPaymentToss] 토스 결제 요청:', { orderId, orderName, amount });
+
+            // 4. 토스페이먼츠 공식 결제 요청
+            await paymentWidget.requestPayment({
+                orderId: orderId,
+                orderName: orderName,
+                successUrl: webSuccessUrl,
+                failUrl: webFailUrl,
+                customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "customer@example.com",
+                customerName: SK?.customerName || ticketInfo?.customerName || "고객",
+                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "01012341234",
+            });
+
+            console.log('[CheckPaymentToss] 토스 결제 완료 - 리다이렉션 진행 중');
+
+        } catch (error) {
+            console.error('[CheckPaymentToss] 결제 처리 오류:', error);
+
+            const errorMessage = error?.message ||
+                error?.error?.message ||
+                error?.response?.data?.message ||
+                '결제 요청 중 오류가 발생했습니다.';
+
+            const errorCode = error?.code ||
+                error?.errorCode ||
+                error?.response?.data?.code ||
+                error?.name ||
+                'Error';
+
+            // RN 브리지 타임아웃인 경우 더 자세한 안내
+            if (errorMessage.includes('RN 응답 타임아웃')) {
+                alert(`React Native 앱에서 응답이 없습니다.\n\n가능한 원인:\n1. 네트워크 연결 문제\n2. 서버 응답 지연\n3. 앱 내부 처리 오류\n\n앱을 다시 시작하거나 네트워크를 확인해주세요.\n\ncode=${errorCode}\nmsg=${errorMessage}`);
+            } else {
+                alert(`결제 요청 중 오류가 발생했습니다.\ncode=${errorCode}\nmsg=${errorMessage}`);
+            }
         }
     };
 
@@ -413,14 +648,6 @@ export default function CheckPaymentToss() {
                         <span className="copy-btn" onClick={() => navigator.clipboard.writeText('http://skasca.me/cash')}>URL 복사</span>
                     </div>
                     <div className="line"></div>
-                    {/* {selectedPaymentMethod !== 'credit-card' && selectedPaymentMethod !== 'toss-pay' && (
-                        <p className="atm-text">
-                            <b>‘ATM 기기’를 통한 무통장 입금은 지원되지 않아요.</b><br />
-                            인터넷 뱅킹 또는 은행 창구를 통해 입금 부탁 드려요!<br /><br />
-                            <b>해외송금을 통해 무통장 입금 시 결제가 실패됩니다.</b><br />
-                            결제실패로 인한 환불 시 고객님께 해외송금 수수료가 청구될 수 있습니다.
-                        </p>
-                    )} */}
                 </div>
 
                 {/* 안내사항 */}
@@ -434,7 +661,7 @@ export default function CheckPaymentToss() {
                     <p className="note-text font-noto">안내사항입니다.</p>
                 </div>
 
-                {/* 토스 결제 위젯 */}
+                {/* 토스페이먼츠 공식 결제 위젯 */}
                 <div className="toss-payment-widget">
                     <div className="section2-title-box">
                         <div className="text-box">
@@ -442,110 +669,67 @@ export default function CheckPaymentToss() {
                         </div>
                     </div>
 
-                    {/* 신용·체크카드 섹션 */}
-                    <div className="payment-section">
-                        <div className="payment-methods-grid credit-card-grid">
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'credit-card' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('credit-card')}
-                            >
-                                <div className="payment-brand">
-                                    <span className="credit-card-text">신용·체크카드</span>
-                                </div>
-                            </div>
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'toss-pay' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('toss-pay')}
-                            >
-                                <div className="payment-brand">
-                                    <div className="brand-logo toss-pay">
-                                        <span className="toss-logo">toss pay</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'payco' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('payco')}
-                            >
-                                <div className="payment-brand">
-                                    <div className="brand-logo payco">
-                                        <span className="payco-logo">PAYCO</span>
-                                    </div>
-                                </div>
-                            </div>
+                    {/* 토스페이먼츠 공식 결제 위젯 영역 */}
+                    {!isPaymentReady && (
+                        <div style={{
+                            padding: '40px 20px',
+                            textAlign: 'center',
+                            color: '#666',
+                            fontSize: '14px'
+                        }}>
+                            결제 위젯을 불러오는 중입니다...
                         </div>
-                    </div>
+                    )}
 
-                    {/* 간편결제 섹션 */}
-                    <div className="payment-section simple-pay">
-                        <div className="payment-methods-grid">
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'kakao-pay' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('kakao-pay')}
-                            >
-                                <div className="payment-brand">
-                                    <div className="brand-logo kakao-pay">
-                                        <span className="kakao-logo">●</span>
-                                        <span className="kakao-text">pay</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'naver-pay' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('naver-pay')}
-                            >
-                                <div className="payment-brand">
-                                    <div className="brand-logo naver-pay">
-                                        <span className="naver-logo">N</span>
-                                        <span className="naver-text">pay</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div
-                                className={`payment-method-item ${selectedPaymentMethod === 'mobile' ? 'selected' : ''}`}
-                                onClick={() => setSelectedPaymentMethod('mobile')}
-                            >
-                                <div className="payment-brand">
-                                    <span className="mobile-text">휴대폰</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    {/* 결제 방법 위젯 - React가 관리하지 않는 컨테이너 */}
+                    <div
+                        ref={(el) => {
+                            if (el && !el.querySelector('#payment-method')) {
+                                const paymentDiv = document.createElement('div');
+                                paymentDiv.id = 'payment-method';
+                                paymentDiv.style.cssText = `
+                                        margin-bottom: 16px;
+                                        min-height: 200px;
+                                        width: 100%;
+                                    `;
+                                el.appendChild(paymentDiv);
+                            }
+                        }}
+                        style={{ marginBottom: '16px' }}
+                    />
 
-                    {/* 동적 할인/혜택 정보 (토스에서 제공되는 정보로 대체 가능) */}
-                    <div className="dynamic-benefits-info">
-                        {/* 이 부분은 토스 API에서 동적으로 받아온 혜택 정보를 표시 */}
-                        <div className="benefit-item">
-                            <div className="benefit-header">
-                                <div className="benefit-logo">
-                                    <span>S</span>
-                                </div>
-                                <span>신한카드 최대 5개월 무이자 할부</span>
-                            </div>
-                        </div>
-                        <div className="benefit-item">
-                            <div className="benefit-detail">
-                                <span>Payco · 포인트 결제 시 1% 적립</span>
-                            </div>
-                        </div>
-                        <div className="benefit-item">
-                            <div className="benefit-link">
-                                <span>신용카드 무이자 할부 안내</span>
-                                <span className="arrow">›</span>
-                            </div>
-                        </div>
-                    </div>
+                    {/* 약관 동의 위젯 - React가 관리하지 않는 컨테이너 */}
+                    <div
+                        ref={(el) => {
+                            if (el && !el.querySelector('#agreement')) {
+                                const agreementDiv = document.createElement('div');
+                                agreementDiv.id = 'agreement';
+                                agreementDiv.style.cssText = `
+                                        margin-bottom: 16px;
+                                        min-height: 50px;
+                                        width: 100%;
+                                    `;
+                                el.appendChild(agreementDiv);
+                            }
+                        }}
+                        style={{ marginBottom: '16px' }}
+                    />
 
-                    {/* 약관 동의 */}
-                    <div className="agreement-section-toss">
-                        <div className="agreement-item-toss">
-                            <input type="checkbox" id="agree-payment-toss" defaultChecked />
-                            <label htmlFor="agree-payment-toss">
-                                [필수] 결제 서비스 이용 약관, 개인정보 처리 동의
-                            </label>
-                            <span className="arrow">›</span>
+                    {/* 로딩 상태 표시 */}
+                    {/* {!isPaymentReady && (
+                        <div style={{
+                            padding: '20px',
+                            textAlign: 'center',
+                            color: '#666',
+                            fontSize: '14px',
+                            border: '1px solid #ddd',
+                            borderRadius: '8px',
+                            backgroundColor: '#f9f9f9',
+                            marginBottom: '16px'
+                        }}>
+                            토스 결제 위젯을 불러오는 중입니다...
                         </div>
-                    </div>
+                    )} */}
                 </div>
 
 
@@ -560,7 +744,15 @@ export default function CheckPaymentToss() {
                     <span>{finalAmountText}</span>
                 </div>
                 <div className="bottom-button">
-                    <button onClick={onClickBuy}>구매하기</button>
+                    <button
+                        onClick={onClickBuy}
+                        disabled={!isPaymentReady}
+                        style={{
+                            opacity: isPaymentReady ? 1 : 0.6,
+                        }}
+                    >
+                        구매하기
+                    </button>
                 </div>
             </div>
         </div>
