@@ -74,8 +74,27 @@ const TossPayment = () => {
             id: SK?.order?.id || q.orderId || `order-${Date.now()}`,
             name: SK?.order?.name || q.name || "상품",
             amount: parseAmount(SK?.order?.amount ?? q.amount ?? 0),
-            customerName: SK?.order?.customerName || q.customerName || "고객",
-            customerEmail: SK?.order?.customerEmail || q.customerEmail || "test@example.com",
+            customerName: SK?.order?.customerName ||
+                q.customerName ||
+                SK?.userName ||
+                SK?.userInfo?.name ||
+                SK?.customerName ||
+                (typeof localStorage !== "undefined" && localStorage.getItem('userName')) ||
+                "고객",
+            customerEmail: SK?.order?.customerEmail ||
+                q.customerEmail ||
+                SK?.userEmail ||
+                SK?.userInfo?.email ||
+                SK?.customerEmail ||
+                (typeof localStorage !== "undefined" && localStorage.getItem('userEmail')) ||
+                "test@example.com",
+            customerMobilePhone: SK?.order?.customerMobilePhone ||
+                q.customerMobilePhone ||
+                SK?.userPhone ||
+                SK?.userInfo?.phone ||
+                SK?.customerPhone ||
+                (typeof localStorage !== "undefined" && localStorage.getItem('userPhone')) ||
+                undefined,
         };
 
         // 키/고객 식별자
@@ -159,8 +178,9 @@ const TossPayment = () => {
                 if (cancelled) return;
                 console.log("[TOSS:init:loaded] OK");
 
-                const methods = widget.renderPaymentMethods("#toss-widget-container", {
-                    value: order.amount,
+                const methods = widget.renderPaymentMethods({
+                    selector: "#payment-method",
+                    variantKey: "sky-sunny",
                 });
                 if (widget.renderAgreement) widget.renderAgreement("#toss-agreement");
 
@@ -201,6 +221,22 @@ const TossPayment = () => {
                         ...prev,
                         ...data.order,
                         amount: parseAmount(data.order.amount ?? prev.amount),
+                        // 사용자 정보도 업데이트
+                        customerName: data.order.customerName ||
+                            data.userName ||
+                            data.userInfo?.name ||
+                            data.customerName ||
+                            prev.customerName,
+                        customerEmail: data.order.customerEmail ||
+                            data.userEmail ||
+                            data.userInfo?.email ||
+                            data.customerEmail ||
+                            prev.customerEmail,
+                        customerMobilePhone: data.order.customerMobilePhone ||
+                            data.userPhone ||
+                            data.userInfo?.phone ||
+                            data.customerPhone ||
+                            prev.customerMobilePhone,
                     }));
                 }
                 if (data.successUrl) setSuccessUrl(coerceWebUrl(data.successUrl));
@@ -282,15 +318,16 @@ const TossPayment = () => {
             }
 
             const payload = {
-                orderId,
+                orderId: order.id,
                 orderName: order.name,
                 customerName: order.customerName,
                 customerEmail: order.customerEmail,
                 amount: amount, // 서버에서 검증된 금액 사용
-                successUrl,
-                failUrl,
+                successUrl: successUrl,
+                failUrl: failUrl,
             };
             console.log("[TOSS] requestPayment →", payload);
+            console.log("[TOSS] requestPayment →", order);
 
             // 3. 디버깅이 필요한 경우
             console.log('결제 정보:', window.debugPaymentInfo());
