@@ -413,9 +413,12 @@ window.finalPaymentCheck = (orderNumber = null, contextAmount = null) => {
             }
         }
 
+<<<<<<< HEAD
         // console.log('[WebViewBridge] finalPaymentCheck - 금액 소스들:', amountSources);
         // console.log('[WebViewBridge] finalPaymentCheck - 선택된 금액:', validatedAmount);
-
+=======
+        console.log('[WebViewBridge] finalPaymentCheck - 금액 소스들:', amountSources);
+        console.log('[WebViewBridge] finalPaymentCheck - 선택된 금액:', validatedAmount);
         // 3. 금액 검증
         if (validatedAmount === null || validatedAmount <= 0) {
             console.warn('[WebViewBridge] finalPaymentCheck - 유효한 금액을 찾을 수 없음:', {
@@ -545,11 +548,11 @@ window.debugPaymentInfo = () => {
             }
         };
 
-        // console.log('[WebViewBridge] 디버깅 정보:', debugInfo);
+        console.log('[WebViewBridge] 디버깅 정보:', debugInfo);
         return debugInfo;
 
     } catch (error) {
-        // console.error('[WebViewBridge] debugPaymentInfo 오류:', error);
+        console.error('[WebViewBridge] debugPaymentInfo 오류:', error);
         return {
             error: '디버깅 정보 수집 중 오류가 발생했습니다.',
             timestamp: new Date().toISOString()
@@ -565,23 +568,23 @@ export const initWebViewBridge = () => {
     const hasRNBridge = typeof window.__askRN === 'function';
     const hasWebView = typeof window.ReactNativeWebView !== 'undefined';
 
-    // console.log('[WebViewBridge] 웹뷰 브리지 초기화 완료');
-    // console.log('[WebViewBridge] 환경 정보:');
-    // console.log(`- RN Bridge (__askRN): ${hasRNBridge ? '✅ 사용 가능' : '❌ 없음'}`);
-    // console.log(`- WebView: ${hasWebView ? '✅ 사용 가능' : '❌ 없음 (브라우저 환경)'}`);
+    console.log('[WebViewBridge] 웹뷰 브리지 초기화 완료');
+    console.log('[WebViewBridge] 환경 정보:');
+    console.log(`- RN Bridge (__askRN): ${hasRNBridge ? '✅ 사용 가능' : '❌ 없음'}`);
+    console.log(`- WebView: ${hasWebView ? '✅ 사용 가능' : '❌ 없음 (브라우저 환경)'}`);;
 
     if (!hasRNBridge && !hasWebView) {
         console.log('[WebViewBridge] 🔄 브라우저 환경에서 모크 데이터로 동작합니다.');
     }
 
-    // console.log('[WebViewBridge] 사용 가능한 함수들:');
-    // console.log('- window.__askRN(action, payload) - RN으로 메시지 전송');
-    // console.log('- window.getPaymentDetail(orderNumber) - 임시 주문 상세 조회');
-    // console.log('- window.updatePayment(orderNumber, data) - 결제 정보 업데이트');
-    // console.log('- window.requestPayment(orderNumber, data) - 구매 요청');
-    // console.log('- window.checkPaymentComplete(orderNumber) - 결제 완료 확인');
-    // console.log('- window.finalPaymentCheck(orderNumber) - 결제 전 최종 검증');
-    // console.log('- window.debugPaymentInfo() - 결제 디버깅 정보 조회');
+    console.log('[WebViewBridge] 사용 가능한 함수들:');
+    console.log('- window.__askRN(action, payload) - RN으로 메시지 전송');
+    console.log('- window.getPaymentDetail(orderNumber) - 임시 주문 상세 조회');
+    console.log('- window.updatePayment(orderNumber, data) - 결제 정보 업데이트');
+    console.log('- window.requestPayment(orderNumber, data) - 구매 요청');
+    console.log('- window.checkPaymentComplete(orderNumber) - 결제 완료 확인');
+    console.log('- window.finalPaymentCheck(orderNumber) - 결제 전 최종 검증');
+    console.log('- window.debugPaymentInfo() - 결제 디버깅 정보 조회');
 };
 
 // 브라우저 환경에서 즉시 초기화

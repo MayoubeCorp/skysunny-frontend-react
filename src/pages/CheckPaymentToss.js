@@ -360,13 +360,8 @@ export default function CheckPaymentToss() {
                 });
 
                 const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
-                    // value: widgetAmount,
-                    variantKey: "sky-sunny",
+                    value: widgetAmount
                 });
-                // const paymentMethodsWidget = paymentWidget.renderPaymentMethods({
-                //     selector: "#payment-method",
-                //     variantKey: "sky-sunny",
-                // });
 
                 console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료, 설정된 금액:', widgetAmount);
 
@@ -689,6 +684,7 @@ export default function CheckPaymentToss() {
             const paymentRequest = {
                 orderId: orderId,
                 orderName: orderName,
+                // amount 필드 제거 - 위젯에 설정된 금액을 자동으로 사용
                 successUrl: webSuccessUrl,
                 failUrl: webFailUrl,
                 customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "user@skysunny.com",
