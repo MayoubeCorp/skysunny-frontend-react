@@ -360,8 +360,13 @@ export default function CheckPaymentToss() {
                 });
 
                 const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
-                    value: widgetAmount
+                    // value: widgetAmount,
+                    variantKey: "sky-sunny",
                 });
+                // const paymentMethodsWidget = paymentWidget.renderPaymentMethods({
+                //     selector: "#payment-method",
+                //     variantKey: "sky-sunny",
+                // });
 
                 console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료, 설정된 금액:', widgetAmount);
 
@@ -636,9 +641,9 @@ export default function CheckPaymentToss() {
                 } else {
                     await window.updatePayment(orderNumber, {
                         amount: amount,
-                        orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
-                        customerName: SK?.customerName || ticketInfo?.customerName || '고객',
-                        customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
+                        orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '-',
+                        customerName: SK?.customerName || ticketInfo?.customerName || '사용자',
+                        customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'user@skysunny.com',
                         paymentMethod: 'toss',
                         couponId: selectedCoupon?.id || null,
                         couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
@@ -684,12 +689,11 @@ export default function CheckPaymentToss() {
             const paymentRequest = {
                 orderId: orderId,
                 orderName: orderName,
-                // amount 필드 제거 - 위젯에 설정된 금액을 자동으로 사용
                 successUrl: webSuccessUrl,
                 failUrl: webFailUrl,
-                customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "customer@example.com",
-                customerName: SK?.customerName || ticketInfo?.customerName || "고객",
-                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "01012341234",
+                customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "user@skysunny.com",
+                customerName: SK?.customerName || ticketInfo?.customerName || "사용자",
+                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "-",
             };
 
             console.log('[CheckPaymentToss] paymentRequest (위젯 금액 자동 사용):', paymentRequest);

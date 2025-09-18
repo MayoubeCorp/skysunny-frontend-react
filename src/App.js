@@ -1,6 +1,5 @@
 import React from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
-import TossPayment from './components/TossPayment';
 import CheckCoupon from './pages/CheckCoupon';
 import CheckPaymentToss from './pages/CheckPaymentToss';
 import CompletePayment from './pages/CompletePayment';
@@ -22,7 +21,7 @@ function App() {
         <Route path="/complete-payment" element={<CompletePayment />} />
         <Route path="/check-coupon" element={<CheckCoupon />} />
         <Route path="/qr-code" element={<QrCode />} />
-        <Route path="/toss-payment" element={<TossPayment />} />
+        {/* <Route path="/toss-payment" element={<TossPayment />} /> */}
       </Routes>
     </Router>
   );
