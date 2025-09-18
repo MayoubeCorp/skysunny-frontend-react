@@ -1,5 +1,5 @@
-// CheckPaymentToss.js - 토스페이먼츠 공식 SDK 방식
-import { loadPaymentWidget } from "@tosspayments/payment-widget-sdk";
+// CheckPaymentToss.js - 토스페이먼츠 v2 SDK 방식
+import { loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Banner from '../components/BannerSlider';
@@ -18,9 +18,10 @@ export default function CheckPaymentToss() {
     const [selectedCoupon, setSelectedCoupon] = useState(location.state?.selectedCoupon || null);
     const [ticketInfo, setTicketInfo] = useState(null);
 
-    // 토스 결제 위젯 관련 상태
-    const [paymentWidget, setPaymentWidget] = useState(null);
-    const [paymentMethods, setPaymentMethods] = useState(null);
+    // 토스페이먼츠 v2 SDK 관련 상태
+    const [tossPayments, setTossPayments] = useState(null);
+    const [widgets, setWidgets] = useState(null);
+    const [paymentMethodsWidget, setPaymentMethodsWidget] = useState(null);
     const [isPaymentReady, setIsPaymentReady] = useState(false);
     const lastAmountRef = useRef(1000);
 
@@ -247,7 +248,7 @@ export default function CheckPaymentToss() {
 
     // RN reply 수신 → serverAmount 즉시 반영
     useEffect(() => {
-        const onReply = (e) => {
+        const onReply = async (e) => {
             const payload = e?.detail || {};
             if (payload?.action !== 'REQUEST_DRAFT' || !payload?.ok) return;
 
@@ -261,8 +262,8 @@ export default function CheckPaymentToss() {
                 console.log('[CheckPaymentToss] RN serverAmount 수신:', serverAmount);
                 setTicketInfo((prev) => ({ ...(prev || {}), serverAmount }));
                 try {
-                    if (paymentMethods) {
-                        paymentMethods.updateAmount({ value: serverAmount });
+                    if (paymentMethodsWidget && widgets) {
+                        await widgets.setAmount({ currency: "KRW", value: serverAmount });
                         lastAmountRef.current = serverAmount;
                         console.log('[CheckPaymentToss] 위젯 금액을 serverAmount로 동기화');
                     }
@@ -273,7 +274,7 @@ export default function CheckPaymentToss() {
         };
         document.addEventListener('skysunny:reply', onReply);
         return () => document.removeEventListener('skysunny:reply', onReply);
-    }, [paymentMethods]);
+    }, [paymentMethodsWidget]);
 
     // 쿠폰 상태 동기화
     useEffect(() => {
@@ -331,15 +332,20 @@ export default function CheckPaymentToss() {
                 paymentMethodElement.innerHTML = '';
                 agreementElement.innerHTML = '';
 
-                console.log('[CheckPaymentToss] loadPaymentWidget 호출...');
-                const paymentWidget = await loadPaymentWidget(clientKey, customerKey);
+                const tossPayments = await loadTossPayments(clientKey);
                 if (!isMounted) return;
 
-                console.log('[CheckPaymentToss] PaymentWidget 로드 성공');
+                console.log('[CheckPaymentToss] TossPayments v2 SDK 로드 성공');
+
+                // v2 SDK 위젯 인스턴스 생성
+                const widgets = tossPayments.widgets({
+                    customerKey: customerKey
+                });
+                if (!isMounted) return;
 
                 // 위젯 금액을 정수로 강제 변환
                 const widgetAmount = Math.floor(Number(validAmount));
-                console.log('[CheckPaymentToss] renderPaymentMethods 호출...', {
+                console.log('[CheckPaymentToss] renderPaymentMethods 호출 (v2)...', {
                     finalAmount,
                     validAmount,
                     widgetAmount,
@@ -353,17 +359,32 @@ export default function CheckPaymentToss() {
                 if (widgetAmount <= 0) throw new Error(`유효하지 않은 결제 금액: ${widgetAmount}`);
                 if (!Number.isInteger(widgetAmount)) throw new Error(`위젯 금액이 정수가 아님: ${widgetAmount} (타입: ${typeof widgetAmount})`);
 
-                console.log('[CheckPaymentToss] 토스페이먼츠 위젯에 전달할 금액:', {
+                console.log('[CheckPaymentToss] 토스페이먼츠 v2 위젯에 전달할 금액:', {
                     value: widgetAmount,
                     type: typeof widgetAmount,
                     isInteger: Number.isInteger(widgetAmount)
                 });
 
-                const paymentMethodsWidget = paymentWidget.renderPaymentMethods("#payment-method", {
+                // v2 SDK에서는 setAmount를 먼저 호출해야 함 (필수!)
+                await widgets.setAmount({
+                    currency: "KRW",
                     value: widgetAmount
                 });
+                console.log('[CheckPaymentToss] widgets.setAmount 완료:', widgetAmount);
 
-                console.log('[CheckPaymentToss] PaymentMethods 렌더링 완료, 설정된 금액:', widgetAmount);
+                // 결제 수단과 약관을 병렬로 렌더링
+                const [paymentMethodsWidget] = await Promise.all([
+                    widgets.renderPaymentMethods({
+                        selector: "#payment-method",
+                        variantKey: "sky-sunny"
+                    }),
+                    widgets.renderAgreement({
+                        selector: "#agreement",
+                        variantKey: "AGREEMENT"
+                    })
+                ]);
+
+                console.log('[CheckPaymentToss] PaymentMethods & Agreement v2 렌더링 완료, 설정된 금액:', widgetAmount);
 
                 // 위젯에 설정된 금액 추적
                 lastAmountRef.current = widgetAmount;
@@ -380,17 +401,16 @@ export default function CheckPaymentToss() {
                     isAmountSet: lastAmountRef.current === widgetAmount
                 });
 
-                console.log('[CheckPaymentToss] renderAgreement 호출...');
-                paymentWidget.renderAgreement("#agreement");
-                console.log('[CheckPaymentToss] Agreement 렌더링 완료');
+                console.log('[CheckPaymentToss] v2 위젯 금액이 setAmount로 설정됨:', widgetAmount);
 
                 if (!isMounted) return;
 
-                setPaymentWidget(paymentWidget);
-                setPaymentMethods(paymentMethodsWidget);
+                setTossPayments(tossPayments);
+                setWidgets(widgets);
+                setPaymentMethodsWidget(paymentMethodsWidget);
                 setIsPaymentReady(true);
 
-                console.log('[CheckPaymentToss] === 토스 결제 위젯 초기화 완료 ===');
+                console.log('[CheckPaymentToss] === 토스페이먼츠 v2 SDK 초기화 완료 ===');
             } catch (error) {
                 console.error('[CheckPaymentToss] 결제 위젯 초기화 실패:', error);
                 if (isMounted) {
@@ -431,7 +451,7 @@ export default function CheckPaymentToss() {
 
     // 금액 변경 시 위젯 업데이트
     useEffect(() => {
-        if (!paymentMethods || !isPaymentReady) return;
+        if (!paymentMethodsWidget || !isPaymentReady) return;
 
         // 금액을 정수로 강제 변환
         const rawAmount = parseAmount(finalAmount) || 1000;
@@ -458,14 +478,20 @@ export default function CheckPaymentToss() {
             rawAmount: rawAmount
         });
 
-        try {
-            paymentMethods.updateAmount({ value: newAmount });
-            lastAmountRef.current = newAmount;
-            console.log('[CheckPaymentToss] 위젯 금액 업데이트 성공:', newAmount);
-        } catch (error) {
-            console.error('[CheckPaymentToss] 금액 업데이트 오류:', error);
+        const updateAmount = async () => {
+            try {
+                await widgets.setAmount({ currency: "KRW", value: newAmount });
+                lastAmountRef.current = newAmount;
+                console.log('[CheckPaymentToss] 위젯 금액 업데이트 성공:', newAmount);
+            } catch (error) {
+                console.error('[CheckPaymentToss] 금액 업데이트 오류:', error);
+            }
+        };
+
+        if (widgets) {
+            updateAmount();
         }
-    }, [finalAmount, paymentMethods, isPaymentReady, parseAmount]);
+    }, [finalAmount, paymentMethodsWidget, isPaymentReady, parseAmount]);
 
     // RN draft 요청
     const needsTarget = (t) => t === 'fix' || t === 'locker';
@@ -539,7 +565,7 @@ export default function CheckPaymentToss() {
             return;
         }
 
-        if (!paymentWidget || !isPaymentReady) {
+        if (!widgets || !isPaymentReady) {
             alert('결제 위젯 준비 중입니다. 잠시 후 다시 시도하세요.');
             return;
         }
@@ -591,9 +617,9 @@ export default function CheckPaymentToss() {
                 amount = Math.floor(Number(serverAmountParsed));
                 console.log('[CheckPaymentToss] 서버 금액 사용:', amount);
 
-                if (paymentMethods) {
+                if (paymentMethodsWidget) {
                     const widgetUpdateAmount = Math.floor(Number(amount));
-                    paymentMethods.updateAmount({ value: widgetUpdateAmount });
+                    await widgets.setAmount({ currency: "KRW", value: widgetUpdateAmount });
                     lastAmountRef.current = widgetUpdateAmount;
                 }
             }
@@ -706,7 +732,7 @@ export default function CheckPaymentToss() {
             // 토스페이먼츠 결제 요청 전 필수 검증
             console.log('[CheckPaymentToss] 결제 요청 전 검증 시작...');
 
-            if (!paymentWidget) {
+            if (!widgets) {
                 console.error('[CheckPaymentToss] 결제 위젯이 초기화되지 않음');
                 throw new Error('결제 위젯이 초기화되지 않았습니다. 페이지를 새로고침해주세요.');
             }
@@ -740,14 +766,14 @@ export default function CheckPaymentToss() {
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 // 위젯 금액 재동기화 시도
-                if (paymentMethods && lastAmountRef.current !== amount) {
+                if (paymentMethodsWidget && lastAmountRef.current !== amount) {
                     console.log('[CheckPaymentToss] 결제 직전 위젯 금액 재동기화:', {
                         currentWidgetAmount: lastAmountRef.current,
                         targetAmount: amount
                     });
 
                     try {
-                        paymentMethods.updateAmount({ value: amount });
+                        await widgets.setAmount({ currency: "KRW", value: amount });
                         lastAmountRef.current = amount;
                         // 재동기화 후 추가 대기
                         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -758,15 +784,15 @@ export default function CheckPaymentToss() {
                 }
 
                 console.log('[CheckPaymentToss] requestPayment 실행 직전 최종 상태:', {
-                    paymentWidget: !!paymentWidget,
-                    paymentMethods: !!paymentMethods,
+                    widgets: !!widgets,
+                    paymentMethodsWidget: !!paymentMethodsWidget,
                     isPaymentReady: isPaymentReady,
                     widgetAmount: lastAmountRef.current,
                     targetAmount: amount,
                     amountMatch: lastAmountRef.current === amount
                 });
 
-                await paymentWidget.requestPayment(paymentRequest);
+                await widgets.requestPayment(paymentRequest);
                 console.log('[CheckPaymentToss] 토스 결제 완료 - 리다이렉션 진행 중');
             } catch (tossError) {
                 console.error('[CheckPaymentToss] 토스페이먼츠 결제 요청 실패:', {
