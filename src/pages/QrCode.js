@@ -197,20 +197,11 @@ export default function QrCode({ navigate }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    /** RN으로 StoreDetail 이동 요청 (UI 변경 없음) */
-    const goStoreDetail = () => {
-        const SK = (typeof window !== "undefined" && window.SKYSUNNY) || {};
-        const q = getQuery();
-        const storeId =
-            Number(q.storeId || 0) ||
-            Number(boot.storeId || 0) ||
-            Number(SK.storeId || 0) ||
-            null;
-        const storeName = orderDetails?.storeName || SK.storeName || null;
-
+    /** RN으로 HomeTab 이동 요청 (UI 변경 없음) */
+    const goHomeTab = () => {
         const payload = {
-            action: "GO_STORE_DETAIL",
-            payload: { storeId, storeName },
+            action: "GO_HOME_TAB",
+            payload: {},
         };
 
         log("CLOSE_BUTTON_CLICKED → send RN", payload);
@@ -232,16 +223,11 @@ export default function QrCode({ navigate }) {
             }
             // 웹 폴백 (브라우저 테스트용)
             if (typeof window !== "undefined") {
-                const qs = new URLSearchParams(
-                    Object.fromEntries(
-                        Object.entries(payload.payload).filter(([, v]) => v != null)
-                    )
-                );
-                window.location.assign(`/store-detail?${qs.toString()}`);
-                log("fallback → /store-detail (web)");
+                window.history.back(); // 브라우저에서는 뒤로가기
+                log("fallback → history.back() (web)");
             }
         } catch (e) {
-            log("goStoreDetail error", e);
+            log("goHomeTab error", e);
         }
     };
 
@@ -289,37 +275,52 @@ export default function QrCode({ navigate }) {
 
             const norm = normalizeResult(data);
 
+            // 기존 데이터와 병합 (sessionStorage 데이터가 있으면 우선 사용하되, API에서 받은 QR 이미지는 업데이트)
+            const mergedQrData = {
+                ...(qrData || {}), // 기존 데이터 유지
+                ...norm.qrData, // API 데이터로 덮어쓰기
+                // QR 이미지는 API에서만 받을 수 있으므로 항상 API 데이터 사용
+                imageUrl: norm.qrData?.imageUrl || qrData?.imageUrl || null
+            };
+
+            const mergedOrderDetails = {
+                ...(orderDetails || {}),
+                ...norm.orderDetails
+            };
+
+            const mergedAttachedInfo = {
+                ...(attachedInfo || {}),
+                ...norm.attachedInfo
+            };
+
+            const mergedQrIdentifier = {
+                ...(qrIdentifier || {}),
+                ...norm.qrIdentifier
+            };
+
             // 가독성 좋은 요약 로그
-            console.groupCollapsed("[QrCode] normalizeResult");
+            console.groupCollapsed("[QrCode] normalizeResult (merged)");
             console.table({
-                usageSeat: norm.qrData?.usageSeat,
-                wifiId: norm.qrData?.wifiId,
-                wifiPassword: norm.qrData?.wifiPassword,
-                entrancePassword: norm.qrData?.entrancePassword,
-                imageUrl: (norm.qrData?.imageUrl || "").slice(0, 60),
+                usageSeat: mergedQrData?.usageSeat,
+                wifiId: mergedQrData?.wifiId,
+                wifiPassword: mergedQrData?.wifiPassword,
+                entrancePassword: mergedQrData?.entrancePassword,
+                imageUrl: (mergedQrData?.imageUrl || "").slice(0, 60),
             });
-            console.table(norm.orderDetails);
-            console.table(norm.attachedInfo);
-            console.table(norm.qrIdentifier);
+            console.table(mergedOrderDetails);
+            console.table(mergedAttachedInfo);
+            console.table(mergedQrIdentifier);
             console.log("computed remainSec =", norm.remainSec);
             console.groupEnd();
 
-            setQrData(norm.qrData || null);
-            setOrderDetails(norm.orderDetails || null);
-            setAttachedInfo(norm.attachedInfo || null);
-            setQrIdentifier(norm.qrIdentifier || null);
+            setQrData(mergedQrData);
+            setOrderDetails(mergedOrderDetails);
+            setAttachedInfo(mergedAttachedInfo);
+            setQrIdentifier(mergedQrIdentifier);
 
-            if (Number.isFinite(norm.remainSec)) {
-                setRemainSec(Math.max(0, Math.ceil(norm.remainSec)));
-            } else {
-                const ts = Number(norm?.qrIdentifier?.timestamp || 0); // 초 단위
-                if (ts > 0) {
-                    const diffSec = Math.max(0, Math.ceil(ts - Date.now() / 1000));
-                    setRemainSec(diffSec);
-                } else {
-                    setRemainSec(0);
-                }
-            }
+            // 항상 3분(180초)으로 고정
+            setRemainSec(180);
+            log("Timer set to 3 minutes (180 seconds)");
         } catch (e) {
             log("fetch error:", e?.message || e);
             setErr(e?.message || "QR 정보를 불러오지 못했습니다.");
@@ -332,43 +333,81 @@ export default function QrCode({ navigate }) {
             try {
                 const raw = e?.data ?? e;
                 const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
-                const type = parsed?.type || parsed?.action;
-                const payload = parsed?.payload || {};
-                log("onMessage:", type, payload);
 
-                // 데이터 직접 주입 (UI는 그대로)
-                if (["QR_DATA", "QR_CODE_PAYLOAD", "PAY_COMPLETE_QR"].includes(type)) {
-                    const norm = normalizeResult(payload || {});
-                    console.groupCollapsed("[QrCode] onMessage normalizeResult");
-                    console.table(norm.qrData);
-                    console.table(norm.orderDetails);
-                    console.table(norm.attachedInfo);
-                    console.table(norm.qrIdentifier);
-                    console.log("computed remainSec =", norm.remainSec);
-                    console.groupEnd();
+                // 다양한 메시지 구조 지원
+                const type = parsed?.type || parsed?.action || parsed?.data?.action;
+                const payload = parsed?.payload || parsed?.data?.payload || parsed;
+
+                log("onMessage raw:", raw);
+                log("onMessage parsed:", { type, payload });
+
+                // 현재 상태 로깅
+                log("Current state before processing:", {
+                    hasQrData: !!qrData,
+                    hasOrderDetails: !!orderDetails,
+                    hasAttachedInfo: !!attachedInfo,
+                    remainSec
+                });
+
+                // RN에서 직접 QR 데이터를 보내는 경우 (type이 없고 qrData가 있는 경우)
+                if (!type && (parsed?.qrData || parsed?.orderDetails || parsed?.attachedInfo)) {
+                    log("Direct QR data received from RN");
+                    const norm = normalizeResult(parsed);
+
 
                     setQrData(norm.qrData || null);
                     setOrderDetails(norm.orderDetails || null);
                     setAttachedInfo(norm.attachedInfo || null);
                     setQrIdentifier(norm.qrIdentifier || null);
 
-                    if (Number.isFinite(norm.remainSec)) {
-                        setRemainSec(Math.max(0, Math.ceil(norm.remainSec)));
-                    } else if (norm.qrIdentifier?.timestamp) {
-                        const diffMs = norm.qrIdentifier.timestamp * 1000 - Date.now();
-                        setRemainSec(Math.max(0, Math.ceil(diffMs / 1000)));
-                    }
+                    // 항상 3분(180초)으로 고정
+                    setRemainSec(180);
+                    log("Timer set to 3 minutes (180 seconds) from direct QR data");
+                    return;
+                }
+
+                // 데이터 직접 주입 (UI는 그대로)
+                if (["QR_DATA", "QR_CODE_PAYLOAD", "PAY_COMPLETE_QR"].includes(type)) {
+                    log("QR_DATA type message received");
+                    const norm = normalizeResult(payload || {});
+
+                    setQrData(norm.qrData || null);
+                    setOrderDetails(norm.orderDetails || null);
+                    setAttachedInfo(norm.attachedInfo || null);
+                    setQrIdentifier(norm.qrIdentifier || null);
+
+                    // 항상 3분(180초)으로 고정
+                    setRemainSec(180);
+                    log("Timer set to 3 minutes (180 seconds) from QR_DATA message");
                     return;
                 }
 
                 // id/token 수신 → fetch
-                if (["QR_CODE_ID", "TOKEN", "REQUEST_QR_CODE_ID_RES"].includes(type)) {
+                if (["QR_CODE_ID", "TOKEN", "REQUEST_QR_CODE_ID_RES", "REQUEST_QR_DATA_RES"].includes(type)) {
                     const id = Number(payload?.aggregateId || payload?.id || 0) || 0;
                     const token =
                         payload?.token || payload?.accessToken || payload?.authToken || boot.token || null;
                     const finalId = id || boot.aggregateId;
                     log("message provided id/token", { finalId, tokenPreview: previewToken(token) });
-                    if (finalId) fetchQr(finalId, token);
+
+                    // QR 데이터가 함께 온 경우 먼저 처리
+                    if (payload?.qrData || payload?.orderDetails || payload?.attachedInfo) {
+                        log("QR data included with id/token message");
+                        const norm = normalizeResult(payload);
+                        setQrData(norm.qrData || null);
+                        setOrderDetails(norm.orderDetails || null);
+                        setAttachedInfo(norm.attachedInfo || null);
+                        setQrIdentifier(norm.qrIdentifier || null);
+
+                        // 항상 3분(180초)으로 고정
+                        setRemainSec(180);
+                        log("Timer set to 3 minutes (180 seconds) from id/token message with QR data");
+                    }
+
+                    // API 호출은 QR 이미지가 없는 경우에만 (QR 데이터가 함께 오지 않은 경우에만)
+                    if (finalId && !(payload?.qrData || payload?.orderDetails || payload?.attachedInfo)) {
+                        fetchQr(finalId, token);
+                    }
                     return;
                 }
 
@@ -376,6 +415,9 @@ export default function QrCode({ navigate }) {
                     setErr(payload || "QR 로드 오류");
                     return;
                 }
+
+                // 알 수 없는 메시지 타입에 대한 추가 로깅
+                log("Unknown message type:", type, "Full message:", parsed);
             } catch (err) {
                 log("onMessage parse error", err);
             }
@@ -387,27 +429,69 @@ export default function QrCode({ navigate }) {
             window.removeEventListener("message", onMsg);
             document.removeEventListener("message", onMsg);
         };
-    }, [boot.aggregateId, boot.token]);
+    }, []); // 의존성 제거 - 이벤트 리스너는 한 번만 등록
 
-    /** 최초 로드: ID가 있으면 즉시 호출, 없으면 RN에 요청 */
+    /** 최초 로드: sessionStorage 데이터 우선, 그 다음 ID로 API 호출, 없으면 RN에 요청 */
     useEffect(() => {
+        // 1단계: sessionStorage에서 QR 데이터 확인 (결제 완료 페이지에서 저장한 데이터)
+        try {
+            const qrPayloadStr = sessionStorage.getItem('qr:payload');
+            if (qrPayloadStr) {
+                const qrPayload = JSON.parse(qrPayloadStr);
+                log("sessionStorage QR 데이터 발견:", qrPayload);
+
+                // sessionStorage 데이터로 즉시 UI 업데이트
+                setQrData(qrPayload.qrData || null);
+                setOrderDetails(qrPayload.orderDetails || null);
+                setAttachedInfo(qrPayload.attachedInfo || null);
+                setQrIdentifier(qrPayload.qrIdentifier || null);
+
+                // 항상 3분(180초)으로 고정
+                setRemainSec(180);
+                log("Timer set to 3 minutes (180 seconds) from sessionStorage");
+
+                // sessionStorage 데이터 사용 후 정리
+                sessionStorage.removeItem('qr:payload');
+
+                // QR 이미지는 여전히 API에서 받아와야 하므로 API 호출 진행
+                if (boot.aggregateId) {
+                    log("sessionStorage 데이터 사용 후 QR 이미지를 위한 API 호출");
+                    fetchQr(boot.aggregateId, boot.token);
+                }
+                return;
+            }
+        } catch (e) {
+            log("sessionStorage QR 데이터 파싱 오류:", e);
+        }
+
+        // 2단계: aggregateId가 있으면 API 호출
         if (boot.aggregateId) {
             log("boot aggregateId present → fetch");
             fetchQr(boot.aggregateId, boot.token);
         } else {
-            log("no aggregateId → ask RN for id/token");
+            log("no aggregateId → ask RN for id/token and QR data");
             try {
-                const ask = (action) => {
+                const ask = (action, payload = {}) => {
+                    const message = { action, payload };
+                    log("Sending message to RN:", message);
+
                     if (typeof window.__askRN === "function") {
-                        window.__askRN(action, {});
+                        window.__askRN(action, payload);
+                        log("sent via __askRN");
                     } else if (
                         window.ReactNativeWebView &&
                         typeof window.ReactNativeWebView.postMessage === "function"
                     ) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify({ action, payload: {} }));
+                        window.ReactNativeWebView.postMessage(JSON.stringify(message));
+                        log("sent via postMessage");
+                    } else {
+                        log("No RN communication method available");
                     }
                 };
+
+                // QR 데이터와 ID/토큰을 모두 요청
                 ask("REQUEST_QR_CODE_ID");
+                ask("REQUEST_QR_DATA"); // 추가: QR 데이터 직접 요청
                 if (!boot.token) ask("REQUEST_TOKEN");
             } catch (e) {
                 log("ask RN failed", e);
@@ -416,7 +500,7 @@ export default function QrCode({ navigate }) {
 
         // 디버깅 편의
         try {
-            window.__qrDebug = { boot, fetchQr, goStoreDetail };
+            window.__qrDebug = { boot, fetchQr, goHomeTab };
             log("window.__qrDebug ready");
         } catch { }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -522,7 +606,7 @@ export default function QrCode({ navigate }) {
 
             {/* 하단 버튼 */}
             <div className="bottom-bar">
-                <button className="bottom-btn" onClick={goStoreDetail}>
+                <button className="bottom-btn" onClick={goHomeTab}>
                     닫기
                 </button>
             </div>
