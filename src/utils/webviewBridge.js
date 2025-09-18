@@ -413,10 +413,9 @@ window.finalPaymentCheck = (orderNumber = null, contextAmount = null) => {
             }
         }
 
-<<<<<<< HEAD
         // console.log('[WebViewBridge] finalPaymentCheck - 금액 소스들:', amountSources);
         // console.log('[WebViewBridge] finalPaymentCheck - 선택된 금액:', validatedAmount);
-=======
+
         console.log('[WebViewBridge] finalPaymentCheck - 금액 소스들:', amountSources);
         console.log('[WebViewBridge] finalPaymentCheck - 선택된 금액:', validatedAmount);
         // 3. 금액 검증
