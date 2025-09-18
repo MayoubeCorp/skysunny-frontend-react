@@ -369,7 +369,7 @@ export default function QrCode({ navigate }) {
                 // 데이터 직접 주입 (UI는 그대로)
                 if (["QR_DATA", "QR_CODE_PAYLOAD", "PAY_COMPLETE_QR"].includes(type)) {
                     log("QR_DATA type message received");
-
+                    const norm = normalizeResult(payload || {});
 
                     setQrData(norm.qrData || null);
                     setOrderDetails(norm.orderDetails || null);
