@@ -355,12 +355,43 @@ export default function QrCode({ navigate }) {
             try {
                 const raw = e?.data ?? e;
                 const parsed = typeof raw === "string" ? JSON.parse(raw || "{}") : (raw || {});
-                const type = parsed?.type || parsed?.action;
-                const payload = parsed?.payload || {};
-                log("onMessage:", type, payload);
+
+                // 다양한 메시지 구조 지원
+                const type = parsed?.type || parsed?.action || parsed?.data?.action;
+                const payload = parsed?.payload || parsed?.data?.payload || parsed;
+
+                log("onMessage raw:", raw);
+                log("onMessage parsed:", { type, payload });
+
+                // RN에서 직접 QR 데이터를 보내는 경우 (type이 없고 qrData가 있는 경우)
+                if (!type && (parsed?.qrData || parsed?.orderDetails || parsed?.attachedInfo)) {
+                    log("Direct QR data received from RN");
+                    const norm = normalizeResult(parsed);
+                    console.groupCollapsed("[QrCode] Direct QR data normalizeResult");
+                    console.table(norm.qrData);
+                    console.table(norm.orderDetails);
+                    console.table(norm.attachedInfo);
+                    console.table(norm.qrIdentifier);
+                    console.log("computed remainSec =", norm.remainSec);
+                    console.groupEnd();
+
+                    setQrData(norm.qrData || null);
+                    setOrderDetails(norm.orderDetails || null);
+                    setAttachedInfo(norm.attachedInfo || null);
+                    setQrIdentifier(norm.qrIdentifier || null);
+
+                    if (Number.isFinite(norm.remainSec)) {
+                        setRemainSec(Math.max(0, Math.ceil(norm.remainSec)));
+                    } else if (norm.qrIdentifier?.timestamp) {
+                        const diffMs = norm.qrIdentifier.timestamp * 1000 - Date.now();
+                        setRemainSec(Math.max(0, Math.ceil(diffMs / 1000)));
+                    }
+                    return;
+                }
 
                 // 데이터 직접 주입 (UI는 그대로)
                 if (["QR_DATA", "QR_CODE_PAYLOAD", "PAY_COMPLETE_QR"].includes(type)) {
+                    log("QR_DATA type message received");
                     const norm = normalizeResult(payload || {});
                     console.groupCollapsed("[QrCode] onMessage normalizeResult");
                     console.table(norm.qrData);
@@ -385,13 +416,34 @@ export default function QrCode({ navigate }) {
                 }
 
                 // id/token 수신 → fetch
-                if (["QR_CODE_ID", "TOKEN", "REQUEST_QR_CODE_ID_RES"].includes(type)) {
+                if (["QR_CODE_ID", "TOKEN", "REQUEST_QR_CODE_ID_RES", "REQUEST_QR_DATA_RES"].includes(type)) {
                     const id = Number(payload?.aggregateId || payload?.id || 0) || 0;
                     const token =
                         payload?.token || payload?.accessToken || payload?.authToken || boot.token || null;
                     const finalId = id || boot.aggregateId;
                     log("message provided id/token", { finalId, tokenPreview: previewToken(token) });
-                    if (finalId) fetchQr(finalId, token);
+
+                    // QR 데이터가 함께 온 경우 먼저 처리
+                    if (payload?.qrData || payload?.orderDetails || payload?.attachedInfo) {
+                        log("QR data included with id/token message");
+                        const norm = normalizeResult(payload);
+                        setQrData(norm.qrData || null);
+                        setOrderDetails(norm.orderDetails || null);
+                        setAttachedInfo(norm.attachedInfo || null);
+                        setQrIdentifier(norm.qrIdentifier || null);
+
+                        if (Number.isFinite(norm.remainSec)) {
+                            setRemainSec(Math.max(0, Math.ceil(norm.remainSec)));
+                        } else if (norm.qrIdentifier?.timestamp) {
+                            const diffMs = norm.qrIdentifier.timestamp * 1000 - Date.now();
+                            setRemainSec(Math.max(0, Math.ceil(diffMs / 1000)));
+                        }
+                    }
+
+                    // API 호출은 QR 이미지가 없는 경우에만
+                    if (finalId && (!qrData?.imageUrl || payload?.forceRefresh)) {
+                        fetchQr(finalId, token);
+                    }
                     return;
                 }
 
@@ -399,6 +451,9 @@ export default function QrCode({ navigate }) {
                     setErr(payload || "QR 로드 오류");
                     return;
                 }
+
+                // 알 수 없는 메시지 타입에 대한 추가 로깅
+                log("Unknown message type:", type, "Full message:", parsed);
             } catch (err) {
                 log("onMessage parse error", err);
             }
@@ -451,19 +506,29 @@ export default function QrCode({ navigate }) {
             log("boot aggregateId present → fetch");
             fetchQr(boot.aggregateId, boot.token);
         } else {
-            log("no aggregateId → ask RN for id/token");
+            log("no aggregateId → ask RN for id/token and QR data");
             try {
-                const ask = (action) => {
+                const ask = (action, payload = {}) => {
+                    const message = { action, payload };
+                    log("Sending message to RN:", message);
+
                     if (typeof window.__askRN === "function") {
-                        window.__askRN(action, {});
+                        window.__askRN(action, payload);
+                        log("sent via __askRN");
                     } else if (
                         window.ReactNativeWebView &&
                         typeof window.ReactNativeWebView.postMessage === "function"
                     ) {
-                        window.ReactNativeWebView.postMessage(JSON.stringify({ action, payload: {} }));
+                        window.ReactNativeWebView.postMessage(JSON.stringify(message));
+                        log("sent via postMessage");
+                    } else {
+                        log("No RN communication method available");
                     }
                 };
+
+                // QR 데이터와 ID/토큰을 모두 요청
                 ask("REQUEST_QR_CODE_ID");
+                ask("REQUEST_QR_DATA"); // 추가: QR 데이터 직접 요청
                 if (!boot.token) ask("REQUEST_TOKEN");
             } catch (e) {
                 log("ask RN failed", e);
