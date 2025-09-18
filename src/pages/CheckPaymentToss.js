@@ -371,7 +371,7 @@ export default function CheckPaymentToss() {
                 // 위젯 초기화 완료 후 안정화 대기 (시간 증가)
                 await new Promise(resolve => setTimeout(resolve, 500));
                 console.log('[CheckPaymentToss] 위젯 초기화 안정화 완료');
-                
+
                 // 위젯 상태 최종 확인
                 console.log('[CheckPaymentToss] 위젯 초기화 후 상태 확인:', {
                     widgetAmount: widgetAmount,
@@ -627,21 +627,35 @@ export default function CheckPaymentToss() {
                 if (!Number.isInteger(amount) || amount <= 0) {
                     throw new Error(`결제 금액 형식 오류: ${amount}`);
                 }
-                await window.updatePayment(orderNumber, {
-                    amount: amount,
-                    orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
-                    customerName: SK?.customerName || ticketInfo?.customerName || '고객',
-                    customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
-                    paymentMethod: 'toss',
-                    couponId: selectedCoupon?.id || null,
-                    couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
-                    timestamp: Date.now()
-                });
+
+                // 서버 우회 테스트 모드 (임시)
+                const isServerBypassTest = window.location.search.includes('bypass=true');
+
+                if (isServerBypassTest) {
+                    console.log('[CheckPaymentToss] 서버 우회 테스트 모드 - UPDATE_PAYMENT 스킵');
+                } else {
+                    await window.updatePayment(orderNumber, {
+                        amount: amount,
+                        orderName: SK?.selectedTicket?.name || ticketInfo?.selectedTicket?.name || '상품',
+                        customerName: SK?.customerName || ticketInfo?.customerName || '고객',
+                        customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || 'customer@example.com',
+                        paymentMethod: 'toss',
+                        couponId: selectedCoupon?.id || null,
+                        couponAmount: selectedCoupon?.amount || selectedCoupon?.discount || 0,
+                        timestamp: Date.now()
+                    });
+                }
                 console.log('[CheckPaymentToss] 결제 정보 업데이트 완료');
             } catch (updateErr) {
                 console.warn('[CheckPaymentToss] 결제 정보 업데이트 실패:', updateErr);
-                alert('결제 정보 업데이트에 실패했습니다.\n다시 시도해주세요.');
-                return;
+
+                // 서버 오류 시에도 토스페이먼츠 테스트 계속 진행 (디버깅용)
+                const continueAnyway = window.confirm('서버 업데이트에 실패했습니다.\n\n토스페이먼츠 테스트를 계속 진행하시겠습니까?\n(디버깅 목적)');
+                if (!continueAnyway) {
+                    alert('결제 정보 업데이트에 실패했습니다.\n다시 시도해주세요.');
+                    return;
+                }
+                console.log('[CheckPaymentToss] 서버 오류 무시하고 토스페이먼츠 테스트 계속 진행');
             }
 
             // 3. 토스페이먼츠 공식 결제 요청
@@ -731,7 +745,7 @@ export default function CheckPaymentToss() {
                         currentWidgetAmount: lastAmountRef.current,
                         targetAmount: amount
                     });
-                    
+
                     try {
                         paymentMethods.updateAmount({ value: amount });
                         lastAmountRef.current = amount;
@@ -785,7 +799,7 @@ export default function CheckPaymentToss() {
                             const testAmount = lastAmountRef.current;
                             const recommendedAmounts = [1000, 5000, 10000, 50000, 100000];
                             const alternatives = recommendedAmounts.filter(amt => amt !== testAmount).slice(0, 3);
-                            
+
                             throw new Error(`테스트 환경에서 ${testAmount}원 결제가 제한됩니다.\n\n권장 테스트 금액: ${alternatives.join('원, ')}원\n\n또는 운영 환경에서 시도해주세요.\n\n(토스페이먼츠 테스트 환경 제한)`);
                         } else {
                             throw new Error(`결제 금액이 올바르지 않습니다.\n\n페이지를 새로고침 후 다시 시도해주세요.\n\n문제가 지속되면 고객센터에 문의해주세요.`);
