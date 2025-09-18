@@ -82,6 +82,22 @@ export default function CheckPaymentToss() {
         return 0;
     }, []);
 
+    // 전화번호 형식 정리 함수 (토스페이먼츠 v2 요구사항)
+    const formatPhoneNumber = useCallback((phone) => {
+        if (!phone || typeof phone !== 'string') return undefined;
+
+        // 하이픈, 공백, 괄호 등 특수문자 제거
+        const cleaned = phone.replace(/[^\d]/g, '');
+
+        // 숫자만 남은 전화번호가 유효한지 확인 (10-11자리)
+        if (cleaned.length >= 10 && cleaned.length <= 11) {
+            return cleaned;
+        }
+
+        // 유효하지 않은 경우 undefined 반환 (토스페이먼츠에서 선택사항)
+        return undefined;
+    }, []);
+
     // passKind
     const passKind = useMemo(
         () => String(ticketInfo?.passType || ticketInfo?.type || '').toLowerCase(),
@@ -715,7 +731,7 @@ export default function CheckPaymentToss() {
                 failUrl: webFailUrl,
                 customerEmail: SK?.customerEmail || ticketInfo?.customerEmail || "user@skysunny.com",
                 customerName: SK?.customerName || ticketInfo?.customerName || "사용자",
-                customerMobilePhone: SK?.customerPhone || ticketInfo?.customerPhone || "-",
+                customerMobilePhone: formatPhoneNumber(SK?.customerPhone || ticketInfo?.customerPhone),
             };
 
             console.log('[CheckPaymentToss] paymentRequest (위젯 금액 자동 사용):', paymentRequest);
