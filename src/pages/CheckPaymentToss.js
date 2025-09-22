@@ -22,6 +22,9 @@ export default function CheckPaymentToss() {
     const [isPaymentReady, setIsPaymentReady] = useState(false);
     const lastAmountRef = useRef(50000);
 
+    // URL 복사 알림 상태
+    const [showCopyNotification, setShowCopyNotification] = useState(false);
+
     const bannerImages2 = [bannerImg, bannerImg, bannerImg];
 
     const SK = useMemo(() => window?.SKYSUNNY || {}, []);
@@ -599,7 +602,16 @@ export default function CheckPaymentToss() {
                 {/* PC/대리인 결제 안내 */}
                 <div className="section2-title-box3">
                     <p className="note-text font-bm">PC, 대리인 결제도 가능해요!</p>
-                    <div className="copy-url-box" onClick={() => navigator.clipboard.writeText('http://skasca.me/cash')} style={{ cursor: 'pointer' }}>
+                    <div className="copy-url-box" onClick={async () => {
+                        try {
+                            await navigator.clipboard.writeText('http://skasca.me/cash');
+                            setShowCopyNotification(true);
+                            setTimeout(() => setShowCopyNotification(false), 3000);
+                        } catch (err) {
+                            console.error('URL 복사 실패:', err);
+                            alert('URL 복사에 실패했습니다.');
+                        }
+                    }} style={{ cursor: 'pointer' }}>
                         <span className="font-noto url-text">http://skasca.me/cash</span>
                         <img src={copy} alt="info" className="icon14" />
                         <span className="copy-btn">URL 복사</span>
@@ -684,6 +696,25 @@ export default function CheckPaymentToss() {
                     </button>
                 </div>
             </div>
+
+            {/* URL 복사 알림 메시지 */}
+            {showCopyNotification && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '20px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    color: 'white',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    zIndex: 9999,
+                    fontFamily: 'NotoSansKR, sans-serif'
+                }}>
+                    URL이 복사되었습니다
+                </div>
+            )}
         </div>
     );
 }
