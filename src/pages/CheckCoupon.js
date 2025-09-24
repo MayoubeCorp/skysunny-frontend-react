@@ -31,6 +31,25 @@ export default function CheckCoupon() {
         return () => document.removeEventListener('skysunny:init', handler);
     }, []);
 
+    // ✅ iOS 스와이프 뒤로가기 제스처 차단
+    useEffect(() => {
+        const preventSwipeBack = (e) => {
+            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
+            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        document.addEventListener('touchstart', preventSwipeBack, { passive: false });
+        document.addEventListener('touchmove', preventSwipeBack, { passive: false });
+
+        return () => {
+            document.removeEventListener('touchstart', preventSwipeBack);
+            document.removeEventListener('touchmove', preventSwipeBack);
+        };
+    }, []);
+
     // ✅ storeId/passId 계산 (selectedTicket.id 우선)
     const storeId = useMemo(() => ctx?.storeId ?? ctx?.storeID ?? null, [ctx]);
     const passId = useMemo(
@@ -103,7 +122,7 @@ export default function CheckCoupon() {
     );
 
     return (
-        <div className="container">
+        <div className="container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
             {/* 상단 바 */}
             <div className="top-bar">
                 <div className="top-bar-left">
@@ -159,7 +178,32 @@ export default function CheckCoupon() {
                             {/* 이용하기 버튼 */}
                             <button
                                 className="detail-btn"
-                                onClick={() => navigate('/check-payment', { state: { selectedCoupon: item } })}
+                                onClick={() => {
+                                    try {
+                                        // RN WebView 환경에서 페이지 이동 시도
+                                        if (window.ReactNativeWebView) {
+                                            // RN에게 페이지 이동 요청
+                                            window.ReactNativeWebView.postMessage(JSON.stringify({
+                                                type: 'NAVIGATE',
+                                                path: '/check-payment-toss',
+                                                state: { selectedCoupon: item }
+                                            }));
+                                            console.log('[CheckCoupon] RN으로 페이지 이동 요청:', '/check-payment-toss');
+
+                                            // 일정 시간 후 React Router로 폴백
+                                            setTimeout(() => {
+                                                navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                            }, 100);
+                                        } else {
+                                            // 일반 웹 환경에서는 바로 React Router 사용
+                                            navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                        }
+                                    } catch (error) {
+                                        console.error('[CheckCoupon] 페이지 이동 오류:', error);
+                                        // 오류 발생 시 React Router로 폴백
+                                        navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                    }
+                                }}
                             >
                                 <span className="btn-text">이용하기</span>
                             </button>
