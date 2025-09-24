@@ -8,7 +8,7 @@ import wifiIcon from "../img/home/wifi.png";
 import "../styles/main.scss";
 
 /** ====== 설정 & 유틸 ====== */
-const DEBUG = true;
+const DEBUG = false;
 const log = (...args) => DEBUG && console.log("[QrCode]", ...args);
 
 const API_BASE =
@@ -167,13 +167,26 @@ export default function QrCode({ navigate }) {
     const [qrIdentifier, setQrIdentifier] = useState(null); // { orderId, passId, aggregateId, timestamp }
     const [remainSec, setRemainSec] = useState(0);
     const [err, setErr] = useState(null);
+    const [isInitialized, setIsInitialized] = useState(false); // 초기화 완료 플래그
 
     /** 초기 부트 값 (URL → window.SKYSUNNY) */
     const boot = useMemo(() => {
         const q = getQuery();
         const SK = (typeof window !== "undefined" && window.SKYSUNNY) || {};
-        const aggregateId =
-            Number(q.id ?? SK.aggregateId ?? SK?.order?.aggregateId ?? 0) || 0;
+
+        // aggregateId 우선순위: URL aggregateId > URL id > SKYSUNNY aggregateId > SKYSUNNY order.aggregateId
+        let aggregateId = q.id || SK.aggregateId || SK?.order?.aggregateId || 0;
+
+        // 문자열이면 숫자로 변환, 유효하지 않으면 0
+        if (typeof aggregateId === 'string') {
+            const parsed = parseInt(aggregateId, 10);
+            aggregateId = isNaN(parsed) ? 0 : parsed;
+        } else if (typeof aggregateId === 'number') {
+            aggregateId = isNaN(aggregateId) ? 0 : aggregateId;
+        } else {
+            aggregateId = 0;
+        }
+
         const token =
             q.token ||
             SK.accessToken ||
@@ -182,18 +195,49 @@ export default function QrCode({ navigate }) {
             (SK.headers && SK.headers.Authorization);
         const storeId =
             Number(q.storeId ?? SK.storeId ?? 0) || 0; // StoreDetail 이동용 후보
+
+
         return { aggregateId, token, storeId };
+    }, []);
+
+    /** iOS 스와이프 뒤로가기 제스처 차단 */
+    useEffect(() => {
+        const preventSwipeBack = (e) => {
+            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
+            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        document.addEventListener('touchstart', preventSwipeBack, { passive: false });
+        document.addEventListener('touchmove', preventSwipeBack, { passive: false });
+
+        return () => {
+            document.removeEventListener('touchstart', preventSwipeBack);
+            document.removeEventListener('touchmove', preventSwipeBack);
+        };
     }, []);
 
     /** 페이지 마운트/언마운트 로깅 */
     useEffect(() => {
-        log("MOUNTED", {
+        log("=== QR 페이지 마운트 ===", {
             url: typeof window !== "undefined" ? window.location.href : "-",
             aggregateId: boot.aggregateId,
             storeId: boot.storeId || null,
             tokenPreview: previewToken(boot.token),
+            initialRemainSec: remainSec,
+            hasQrData: !!qrData,
+            hasOrderDetails: !!orderDetails,
+            hasAttachedInfo: !!attachedInfo
         });
-        return () => log("UNMOUNTED");
+
+        // 페이지 마운트 시 타이머 상태 확인
+        if (remainSec <= 0) {
+            log("⚠️ 페이지 마운트 시 remainSec이 0 이하입니다:", remainSec);
+        }
+
+        return () => log("=== QR 페이지 언마운트 ===");
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -233,8 +277,8 @@ export default function QrCode({ navigate }) {
 
     /** API 호출 */
     const fetchQr = async (aggregateId, token) => {
-        if (!aggregateId) {
-            log("fetchQr blocked: no aggregateId");
+        if (!aggregateId || aggregateId === 0 || aggregateId === '0') {
+            log("fetchQr blocked: no valid aggregateId", { aggregateId, type: typeof aggregateId });
             setErr("유효한 QR 식별자가 없습니다.");
             return;
         }
@@ -248,6 +292,7 @@ export default function QrCode({ navigate }) {
             storeId: boot.storeId,
             token: previewToken(boot.token),
         });
+
         log("fetchQr →", {
             url,
             headers: { ...headers, Authorization: previewToken(headers.Authorization) },
@@ -275,6 +320,7 @@ export default function QrCode({ navigate }) {
 
             const norm = normalizeResult(data);
 
+
             // 기존 데이터와 병합 (sessionStorage 데이터가 있으면 우선 사용하되, API에서 받은 QR 이미지는 업데이트)
             const mergedQrData = {
                 ...(qrData || {}), // 기존 데이터 유지
@@ -298,32 +344,52 @@ export default function QrCode({ navigate }) {
                 ...norm.qrIdentifier
             };
 
-            // 가독성 좋은 요약 로그
-            console.groupCollapsed("[QrCode] normalizeResult (merged)");
-            console.table({
-                usageSeat: mergedQrData?.usageSeat,
-                wifiId: mergedQrData?.wifiId,
-                wifiPassword: mergedQrData?.wifiPassword,
-                entrancePassword: mergedQrData?.entrancePassword,
-                imageUrl: (mergedQrData?.imageUrl || "").slice(0, 60),
-            });
-            console.table(mergedOrderDetails);
-            console.table(mergedAttachedInfo);
-            console.table(mergedQrIdentifier);
-            console.log("computed remainSec =", norm.remainSec);
-            console.groupEnd();
 
             setQrData(mergedQrData);
             setOrderDetails(mergedOrderDetails);
             setAttachedInfo(mergedAttachedInfo);
             setQrIdentifier(mergedQrIdentifier);
 
+            // 기존 에러 상태 초기화 (API 성공 시)
+            setErr(null);
+
             // 항상 3분(180초)으로 고정
             setRemainSec(180);
-            log("Timer set to 3 minutes (180 seconds)");
+            setIsInitialized(true);
+            log("✅ API에서 QR 데이터 설정 완료 - Timer set to 3 minutes (180 seconds)");
         } catch (e) {
             log("fetch error:", e?.message || e);
-            setErr(e?.message || "QR 정보를 불러오지 못했습니다.");
+
+            // 에러 유형별 메시지 개선
+            let errorMsg = "QR 정보를 불러오지 못했습니다.";
+            if (e.message?.includes("HTTP 404")) {
+                errorMsg = "해당 주문을 찾을 수 없습니다. aggregateId를 확인해주세요.";
+            } else if (e.message?.includes("HTTP 401") || e.message?.includes("HTTP 403")) {
+                errorMsg = "인증이 필요합니다. 토큰을 확인해주세요.";
+            } else if (e.message?.includes("HTTP")) {
+                errorMsg = `서버 오류: ${e.message}`;
+            } else {
+                errorMsg = e?.message || "QR 정보를 불러오지 못했습니다.";
+            }
+
+
+            // 현재 상태 확인
+            log("API 실패 시 현재 상태:", {
+                hasQrData: !!qrData,
+                hasOrderDetails: !!orderDetails,
+                hasAttachedInfo: !!attachedInfo,
+                currentErr: err
+            });
+
+            // 이미 QR 데이터가 있거나 에러가 설정되어 있으면 추가 에러 설정 안함
+            if (qrData || orderDetails || attachedInfo || err) {
+                log("⚠️ API 실패했지만 기존 데이터가 있거나 이미 에러 상태여서 무시");
+                return;
+            }
+
+            // QR 데이터가 전혀 없고 에러도 없을 때만 에러 표시
+            log("❌ QR 데이터가 없어서 에러 상태로 변경");
+            setErr(errorMsg);
         }
     };
 
@@ -360,9 +426,13 @@ export default function QrCode({ navigate }) {
                     setAttachedInfo(norm.attachedInfo || null);
                     setQrIdentifier(norm.qrIdentifier || null);
 
+                    // 기존 에러 상태 초기화
+                    setErr(null);
+
                     // 항상 3분(180초)으로 고정
                     setRemainSec(180);
-                    log("Timer set to 3 minutes (180 seconds) from direct QR data");
+                    setIsInitialized(true);
+                    log("✅ RN 직접 QR 데이터 설정 완료 - Timer set to 3 minutes (180 seconds)");
                     return;
                 }
 
@@ -376,9 +446,13 @@ export default function QrCode({ navigate }) {
                     setAttachedInfo(norm.attachedInfo || null);
                     setQrIdentifier(norm.qrIdentifier || null);
 
+                    // 기존 에러 상태 초기화
+                    setErr(null);
+
                     // 항상 3분(180초)으로 고정
                     setRemainSec(180);
-                    log("Timer set to 3 minutes (180 seconds) from QR_DATA message");
+                    setIsInitialized(true);
+                    log("✅ QR_DATA 메시지에서 데이터 설정 완료 - Timer set to 3 minutes (180 seconds)");
                     return;
                 }
 
@@ -399,9 +473,13 @@ export default function QrCode({ navigate }) {
                         setAttachedInfo(norm.attachedInfo || null);
                         setQrIdentifier(norm.qrIdentifier || null);
 
+                        // 기존 에러 상태 초기화
+                        setErr(null);
+
                         // 항상 3분(180초)으로 고정
                         setRemainSec(180);
-                        log("Timer set to 3 minutes (180 seconds) from id/token message with QR data");
+                        setIsInitialized(true);
+                        log("✅ ID/토큰 메시지에서 QR 데이터 설정 완료 - Timer set to 3 minutes (180 seconds)");
                     }
 
                     // API 호출은 QR 이미지가 없는 경우에만 (QR 데이터가 함께 오지 않은 경우에만)
@@ -412,7 +490,23 @@ export default function QrCode({ navigate }) {
                 }
 
                 if (type === "QR_ERROR") {
-                    setErr(payload || "QR 로드 오류");
+                    const errorMessage = payload || "QR 로드 오류";
+                    log("❌ QR_ERROR 수신:", errorMessage);
+
+                    // 이미 QR 데이터가 있으면 에러를 무시하고 계속 진행
+                    if (qrData || orderDetails || attachedInfo) {
+                        log("⚠️ QR_ERROR 수신했지만 기존 QR 데이터가 있어서 무시");
+                        return;
+                    }
+
+                    // QR 데이터가 없을 때만 에러 표시
+                    setErr(errorMessage);
+
+                    // 에러 발생 시 5초 후 홈탭으로 자동 이동
+                    setTimeout(() => {
+                        log("🏠 QR 에러로 인한 홈탭 자동 이동");
+                        goHomeTab();
+                    }, 5000);
                     return;
                 }
 
@@ -446,9 +540,13 @@ export default function QrCode({ navigate }) {
                 setAttachedInfo(qrPayload.attachedInfo || null);
                 setQrIdentifier(qrPayload.qrIdentifier || null);
 
+                // 기존 에러 상태 초기화 (sessionStorage 데이터가 있으면 정상 상태)
+                setErr(null);
+
                 // 항상 3분(180초)으로 고정
                 setRemainSec(180);
-                log("Timer set to 3 minutes (180 seconds) from sessionStorage");
+                setIsInitialized(true);
+                log("✅ sessionStorage에서 QR 데이터 설정 완료 - Timer set to 3 minutes (180 seconds)");
 
                 // sessionStorage 데이터 사용 후 정리
                 sessionStorage.removeItem('qr:payload');
@@ -465,11 +563,14 @@ export default function QrCode({ navigate }) {
         }
 
         // 2단계: aggregateId가 있으면 API 호출
-        if (boot.aggregateId) {
-            log("boot aggregateId present → fetch");
+        if (boot.aggregateId && boot.aggregateId !== 0) {
+            log("boot aggregateId present → fetch", { aggregateId: boot.aggregateId });
             fetchQr(boot.aggregateId, boot.token);
         } else {
-            log("no aggregateId → ask RN for id/token and QR data");
+            log("no valid aggregateId → ask RN for id/token and QR data", {
+                aggregateId: boot.aggregateId,
+                type: typeof boot.aggregateId
+            });
             try {
                 const ask = (action, payload = {}) => {
                     const message = { action, payload };
@@ -508,19 +609,94 @@ export default function QrCode({ navigate }) {
 
     /** 인증 타이머 */
     useEffect(() => {
+        log("Timer useEffect - remainSec:", remainSec, "isInitialized:", isInitialized);
+
         if (remainSec <= 0) {
             log("TIMER_EXPIRED (remainSec=0)");
+            // 초기화가 완료되고, 실제로 타이머가 만료된 경우에만 처리
+            if (isInitialized && remainSec === 0 && (qrData || orderDetails || attachedInfo)) {
+                log("✅ 초기화 완료 후 타이머 만료 - 3초 후 홈탭으로 이동");
+                setTimeout(() => {
+                    log("🏠 타이머 만료로 홈탭 이동 실행");
+                    goHomeTab();
+                }, 3000); // 3초 후 이동 (사용자가 만료를 충분히 인지할 수 있도록)
+            } else {
+                log("⏸️ 타이머 만료이지만 조건 미충족 - 이동하지 않음", {
+                    isInitialized,
+                    remainSec,
+                    hasQrData: !!qrData,
+                    hasOrderDetails: !!orderDetails,
+                    hasAttachedInfo: !!attachedInfo
+                });
+            }
             return;
         }
         const t = setInterval(() => setRemainSec((s) => Math.max(0, s - 1)), 1000);
         return () => clearInterval(t);
-    }, [remainSec]);
+    }, [remainSec, isInitialized, qrData, orderDetails, attachedInfo]);
 
     const qrImgSrc = qrData?.imageUrl || qrIcon;
 
-    // ====== ⬇⬇⬇ UI는 절대 변경하지 않음 (원본 그대로) ⬇⬇⬇ ======
+    // 에러 상태 UI
+    if (err) {
+        return (
+            <div className="qr-container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
+                {/* 상단 영역 */}
+                <div className="qr-header">
+                    <div className="qr-header-inner">
+                        <p className="qr-header-text">
+                            <b>QR코드 로드 실패</b>
+                        </p>
+                    </div>
+                </div>
+
+                {/* 에러 메시지 박스 */}
+                <div className="qr-box-wrapper">
+                    <div className="menu-box" style={{
+                        padding: '40px 20px',
+                        textAlign: 'center',
+                        backgroundColor: '#fff5f5',
+                        border: '1px solid #ff6b6b',
+                        borderRadius: '12px'
+                    }}>
+                        <div style={{
+                            fontSize: '48px',
+                            marginBottom: '20px',
+                            color: '#ff6b6b'
+                        }}>⚠️</div>
+                        <div style={{
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            marginBottom: '12px',
+                            color: '#ff6b6b'
+                        }}>
+                            {err}
+                        </div>
+                        <div style={{
+                            fontSize: '14px',
+                            color: '#666',
+                            lineHeight: '1.4'
+                        }}>
+                            잠시 후 자동으로 홈 화면으로 이동합니다.
+                            <br />
+                            문제가 지속되면 고객센터에 문의해주세요.
+                        </div>
+                    </div>
+                </div>
+
+                {/* 하단 버튼 */}
+                <div className="bottom-bar">
+                    <button className="bottom-btn" onClick={goHomeTab}>
+                        홈으로 돌아가기
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ====== ⬇⬇⬇ 정상 상태 UI (원본 그대로) ⬇⬇⬇ ======
     return (
-        <div className="qr-container">
+        <div className="qr-container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
             {/* 상단 영역 */}
             <div className="qr-header">
                 <div className="qr-header-inner">
