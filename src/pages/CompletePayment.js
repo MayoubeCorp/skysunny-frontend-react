@@ -1,5 +1,6 @@
 // src/web/CompletePayment.jsx
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import infoIcon from "../img/home/payment.png";
 import '../styles/main.scss';
 // webviewBridge 유틸리티 import
@@ -24,69 +25,20 @@ const getPassTypeDisplayName = (passType) => {
     }
 };
 
-// passType별 표시할 필드들을 반환하는 함수
-const getDisplayFields = (passType) => {
-    const commonFields = [
+// 표시할 필드들
+const getDisplayFields = () => {
+    return [
         { key: 'storeName', label: '매장명' },
         { key: 'passType', label: '이용권' },
         { key: 'productInfo', label: '상품정보' },
         { key: 'paymentAmount', label: '이용금액', isMoney: true },
-        { key: 'validDays', label: '이용기간' }
+        { key: 'validDays', label: '이용기간' },
+        { type: 'separator' },
+        { key: 'usageInfo', label: '이용정보' },
+        { key: 'orderNumber', label: '주문번호' },
+        { key: 'paidAt', label: '결제일시' },
+        { key: 'paymentAmount', label: '결제금액', isMoney: true }
     ];
-
-    const separator = { type: 'separator' };
-
-    let additionalFields = [];
-
-    switch (passType) {
-        case 'cash':
-            additionalFields = [
-                { key: 'usageInfo', label: '이용정보' },
-                { key: 'orderNumber', label: '주문번호' },
-                { key: 'paidAt', label: '결제일시' },
-                { key: 'paymentAmount', label: '결제금액', isMoney: true }
-            ];
-            break;
-        case 'free':
-            additionalFields = [
-                { key: 'usageInfo', label: '이용정보' },
-                { key: 'oneDayInfo', label: '1일 이용정보' },
-                { key: 'orderNumber', label: '주문번호' },
-                { key: 'paidAt', label: '결제일시' },
-                { key: 'paymentAmount', label: '결제금액', isMoney: true }
-            ];
-            break;
-        case 'fix':
-        case '1day':
-            additionalFields = [
-                { key: 'usageInfo', label: '이용정보' },
-                { key: 'orderNumber', label: '주문번호' },
-                { key: 'paidAt', label: '결제일시' },
-                { key: 'paymentAmount', label: '결제금액', isMoney: true }
-            ];
-            break;
-        case 'locker':
-        case 'studyroom':
-            additionalFields = [
-                { key: 'orderNumber', label: '주문번호' },
-                { key: 'paidAt', label: '결제일시' },
-                { key: 'paymentAmount', label: '결제금액', isMoney: true }
-            ];
-            break;
-        default:
-            // 기본값: 모든 필드 표시
-            additionalFields = [
-                { key: 'usageInfo', label: '이용정보' },
-                { key: 'expireText', label: '만료까지' },
-                { key: 'remainingInfo', label: '잔여정보' },
-                { key: 'oneDayInfo', label: '1일 이용정보' },
-                { key: 'orderNumber', label: '주문번호' },
-                { key: 'paidAt', label: '결제일시' },
-                { key: 'paymentAmount', label: '결제금액', isMoney: true }
-            ];
-    }
-
-    return [...commonFields, separator, ...additionalFields];
 };
 
 // URL에서 orderNumber 추출
@@ -98,63 +50,54 @@ const getOrderNumberFromQuery = () => {
     // orderId (토스 표준), orderNumber (커스텀), paymentKey, amount 등
     const orderNumber = q.get('orderNumber') || q.get('orderId') || q.get('order_id') || q.get('paymentKey');
 
-    console.log('[CompletePayment] URL parameters:', {
-        orderNumber: q.get('orderNumber'),
-        orderId: q.get('orderId'),
-        order_id: q.get('order_id'),
-        paymentKey: q.get('paymentKey'),
-        amount: q.get('amount'),
-        allParams: Object.fromEntries(q.entries())
-    });
 
     return orderNumber;
 };
 
 export default function CompletePayment() {
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [errMsg, setErrMsg] = useState('');
 
-    // 1) orderNumber 결정 (URL 우선, 없으면 다양한 소스에서 시도)
+    // 1) orderNumber 결정 (URL 우선, 없으면 sessionStorage에서 시도)
     const orderNumber = useMemo(() => {
-        console.log('[CompletePayment] orderNumber 추출 시작...');
-
         const fromQuery = getOrderNumberFromQuery();
         if (fromQuery) {
-            console.log('[CompletePayment] ✅ orderNumber from query:', fromQuery);
             return fromQuery;
         }
 
-        // sessionStorage에서 toss:draft 확인 (CheckPayment에서 저장)
-        let fromSessionDraft = null;
+        // sessionStorage에서 toss:draft 확인
         try {
-            const draftStr = typeof window !== 'undefined' ? sessionStorage.getItem('toss:draft') : null;
-            console.log('[CompletePayment] sessionStorage draft string:', draftStr);
+            const draftStr = sessionStorage.getItem('toss:draft');
             if (draftStr) {
                 const draft = JSON.parse(draftStr);
-                fromSessionDraft = draft?.orderNumber || draft?.data?.orderNumber || null;
-                console.log('[CompletePayment] ✅ orderNumber from sessionStorage draft:', fromSessionDraft);
+                return draft?.orderNumber || null;
             }
         } catch (e) {
-            console.warn('[CompletePayment] sessionStorage draft parse error:', e);
+            console.warn('[CompletePayment] sessionStorage parse error:', e);
         }
 
-        if (fromSessionDraft) return fromSessionDraft;
+        return null;
+    }, []);
 
-        const SK = (typeof window !== 'undefined' && window.SKYSUNNY) || {};
-        const fromSK = SK?.orderNumber || SK?.lastOrderNumber || SK?.order?.id || null;
+    // ✅ iOS 스와이프 뒤로가기 제스처 차단
+    useEffect(() => {
+        const preventSwipeBack = (e) => {
+            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
+            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
 
-        console.log('[CompletePayment] window.SKYSUNNY:', SK);
-        console.log('[CompletePayment] orderNumber from SKYSUNNY:', fromSK);
+        document.addEventListener('touchstart', preventSwipeBack, { passive: false });
+        document.addEventListener('touchmove', preventSwipeBack, { passive: false });
 
-        // localStorage에 저장된 orderNumber가 있는지 확인
-        const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastOrderNumber') : null;
-        console.log('[CompletePayment] orderNumber from localStorage:', fromStorage);
-
-        const finalOrderNumber = fromSK || fromStorage || null;
-        console.log('[CompletePayment] 🎯 최종 orderNumber:', finalOrderNumber);
-
-        return finalOrderNumber;
+        return () => {
+            document.removeEventListener('touchstart', preventSwipeBack);
+            document.removeEventListener('touchmove', preventSwipeBack);
+        };
     }, []);
 
     // 2) 결제 완료 데이터 로드 (URL 파라미터 우선, 필요시 RN에서 추가 데이터 요청)
@@ -162,10 +105,8 @@ export default function CompletePayment() {
         let mounted = true;
 
         const load = async () => {
-            console.log('[CompletePayment] 결제 완료 데이터 로드 시작...');
 
             if (!orderNumber) {
-                console.error('[CompletePayment] orderNumber가 없습니다.');
                 setErrMsg('주문번호를 찾을 수 없습니다.');
                 setLoading(false);
                 return;
@@ -185,7 +126,6 @@ export default function CompletePayment() {
                 couponAmount: 0
             };
 
-            console.log('[CompletePayment] URL에서 추출한 결제 데이터:', urlPaymentData);
 
             // 2단계: sessionStorage에서 추가 정보 확인
             let sessionData = {};
@@ -201,7 +141,6 @@ export default function CompletePayment() {
                         validDays: draft.validDays || '30일',
                         usageInfo: draft.usageInfo || '이용정보'
                     };
-                    console.log('[CompletePayment] sessionStorage에서 추가 정보:', sessionData);
                 }
             } catch (e) {
                 console.warn('[CompletePayment] sessionStorage 파싱 오류:', e);
@@ -220,29 +159,30 @@ export default function CompletePayment() {
                 usageInfo: sessionData.usageInfo || '이용정보'
             };
 
-            console.log('[CompletePayment] 병합된 기본 결제 데이터:', basicPaymentData);
 
             // 4단계: 기본 데이터가 충분하면 바로 표시, 아니면 RN에서 추가 데이터 요청
             if (basicPaymentData.paymentAmount && basicPaymentData.paymentAmount > 0) {
-                console.log('[CompletePayment] 기본 데이터로 결제 완료 화면 표시');
-                setData(basicPaymentData);
+                const dataWithAggregateId = {
+                    ...basicPaymentData,
+                    // aggregateId가 없으면 orderNumber를 사용
+                    aggregateId: basicPaymentData?.aggregateId || basicPaymentData?.id || orderNumber
+                };
+                setData(dataWithAggregateId);
                 setLoading(false);
                 return;
             }
 
             // 5단계: RN에서 추가 데이터 요청
-            console.log('[CompletePayment] RN에서 추가 결제 데이터 요청...');
             try {
                 const rnPaymentData = await sendToRN('REQUEST_PAYMENT_COMPLETE', { orderNumber }, 15000);
-                console.log('[CompletePayment] RN에서 받은 추가 결제 데이터:', rnPaymentData);
 
                 if (mounted) {
                     const finalData = {
                         ...basicPaymentData,
                         ...rnPaymentData,
-                        orderNumber: orderNumber // orderNumber는 항상 유지
+                        orderNumber: orderNumber, // orderNumber는 항상 유지
+                        aggregateId: rnPaymentData?.aggregateId
                     };
-                    console.log('[CompletePayment] 최종 결제 데이터:', finalData);
                     setData(finalData);
                     setLoading(false);
                 }
@@ -250,7 +190,11 @@ export default function CompletePayment() {
                 console.warn('[CompletePayment] RN 데이터 요청 실패, 기본 데이터 사용:', error);
                 if (mounted) {
                     // RN 요청 실패해도 기본 데이터로 표시
-                    setData(basicPaymentData);
+                    const fallbackData = {
+                        ...basicPaymentData,
+                        aggregateId: basicPaymentData?.aggregateId
+                    };
+                    setData(fallbackData);
                     setLoading(false);
                 }
             }
@@ -279,22 +223,28 @@ export default function CompletePayment() {
                 window.location.replace(`${window.location.origin}/`);
             }
         } catch (e) {
-            console.log('[CompletePayment] goHome error', e);
         }
     };
 
-    // 4) 입장하기 → 같은 도메인의 /qr-code로 이동 (QR 코드 페이지가 기대하는 파라미터 형식으로 전달)
+    // 4) 입장하기 → React Router navigate를 사용하여 QR 페이지로 이동
     const goQr = () => {
-        if (typeof window === 'undefined' || !data) return;
+        if (!data) {
+            console.warn('[CompletePayment] 결제 데이터가 없어서 QR 페이지로 이동할 수 없습니다.');
+            return;
+        }
+        // aggregateId 결정 로직 개선
+        const finalOrderNumber = data.orderNumber || orderNumber;
+        const finalAggregateId = data.aggregateId || data.id || finalOrderNumber;
+
 
         // QR 페이지에서 사용할 데이터를 미리 준비
         const qrPayload = {
             // QR 코드 기본 정보 (실제 API 응답과 유사한 구조로 구성)
             qrData: {
                 usageSeat: data.seatName || data.seatNumber || null,
-                wifiId: window.SKYSUNNY?.wifiSsid || null,
-                wifiPassword: window.SKYSUNNY?.wifiPassword || null,
-                entrancePassword: window.SKYSUNNY?.entrancePassword || null,
+                wifiId: data.wifiId || window.SKYSUNNY?.wifiSsid || null,
+                wifiPassword: data.wifiPassword || window.SKYSUNNY?.wifiPassword || null,
+                entrancePassword: data.entrancePassword || window.SKYSUNNY?.entrancePassword || null,
                 imageUrl: null // QR 이미지는 API에서 받아와야 함
             },
             orderDetails: {
@@ -308,48 +258,53 @@ export default function CompletePayment() {
                 remainingInfo: data.remainingInfo || null
             },
             qrIdentifier: {
-                orderId: data.orderNumber || orderNumber || null,
+                orderId: finalOrderNumber,
                 passId: null,
-                aggregateId: data.orderNumber || orderNumber || null,
+                aggregateId: finalAggregateId,
                 timestamp: Math.floor(Date.now() / 1000) + (30 * 60) // 30분 후 만료
             }
         };
 
+
         // sessionStorage에 QR 데이터 저장 (QR 페이지에서 사용)
         try {
             sessionStorage.setItem('qr:payload', JSON.stringify(qrPayload));
-            console.log('[CompletePayment] QR 데이터 sessionStorage 저장:', qrPayload);
         } catch (e) {
-            console.warn('[CompletePayment] QR 데이터 sessionStorage 저장 실패:', e);
         }
 
-        // QrCode.js가 기대하는 파라미터 형식으로 전달
-        const p = new URLSearchParams({
-            // QrCode.js의 getQuery()에서 찾는 파라미터들
-            aggregateId: String(data.orderNumber || orderNumber || ''), // orderNumber를 aggregateId로 전달
-            id: String(data.orderNumber || orderNumber || ''), // 백업용
-            token: window.SKYSUNNY?.accessToken || window.SKYSUNNY?.token || localStorage.getItem('accessToken') || '', // 토큰이 있으면 전달
-            storeId: String(window.SKYSUNNY?.storeId || ''), // 매장 ID
+        // QrCode.js가 기대하는 파라미터 준비
+        const finalToken = window.SKYSUNNY?.accessToken || window.SKYSUNNY?.token || localStorage.getItem('accessToken') || '';
+        const finalStoreId = window.SKYSUNNY?.storeId || '';
 
-            // 추가 정보 (QR 페이지에서 직접 사용하지는 않지만 디버깅용)
-            storeName: data.storeName || '',
-            passType: data.passType || '',
-            productInfo: data.productInfo || '',
-            amount: String(data.paymentAmount ?? ''),
-            paidAt: data.paidAt || ''
+        const searchParams = {
+            aggregateId: String(finalAggregateId || ''),
+            token: finalToken,
+            storeId: String(finalStoreId)
+        };
+
+        // 빈 값 제거 (QR 페이지에서 파라미터 파싱 시 문제 방지)
+        Object.keys(searchParams).forEach(key => {
+            if (!searchParams[key] || searchParams[key] === 'undefined' || searchParams[key] === 'null') {
+                delete searchParams[key];
+            }
         });
 
-        console.log('[CompletePayment] QR 페이지로 이동:', {
-            orderNumber: data.orderNumber || orderNumber,
-            aggregateId: data.orderNumber || orderNumber,
-            token: (window.SKYSUNNY?.accessToken || localStorage.getItem('accessToken')) ? 'present' : 'missing',
-            storeId: window.SKYSUNNY?.storeId,
-            qrPayload: qrPayload,
-            url: `${window.location.origin}/qr-code?${p.toString()}`
-        });
 
-        const base = window.location.origin;
-        window.location.assign(`${base}/qr-code?${p.toString()}`);
+        // React Router navigate를 사용하여 이동 (SPA 방식)
+        try {
+            const searchString = new URLSearchParams(searchParams).toString();
+            const qrPath = `/qr-code?${searchString}`;
+
+
+            navigate(qrPath);
+        } catch (error) {
+            console.error('[CompletePayment] React Router navigate 실패, 폴백 사용:', error);
+
+            // 폴백: window.location 사용
+            const p = new URLSearchParams(searchParams);
+            const qrUrl = `${window.location.origin}/qr-code?${p.toString()}`;
+            window.location.href = qrUrl;
+        }
     };
 
     // 5) 로딩/에러 UI
@@ -379,7 +334,7 @@ export default function CompletePayment() {
 
     // 6) 정상 렌더
     return (
-        <div className="complete-container">
+        <div className="complete-container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
             {/* 이미지 */}
             <img src={infoIcon} alt="payment" className="payment-img" />
 
@@ -390,7 +345,7 @@ export default function CompletePayment() {
 
             {/* 정보 카드 */}
             <div className="info-card">
-                {getDisplayFields(data.passType).map((field, index) => {
+                {getDisplayFields().map((field, index) => {
                     if (field.type === 'separator') {
                         return <div key={index} className="line"></div>;
                     }
