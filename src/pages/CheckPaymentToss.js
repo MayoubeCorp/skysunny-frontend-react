@@ -29,7 +29,84 @@ export default function CheckPaymentToss() {
 
     const SK = useMemo(() => window?.SKYSUNNY || {}, []);
 
-    const movePage = (path) => navigate(path);
+    const movePage = (path) => {
+        console.log('[CheckPaymentToss] movePage 호출됨:', path);
+
+        try {
+            // RN WebView 환경 감지
+            const isRNWebView = typeof window !== 'undefined' &&
+                (window.ReactNativeWebView || window.__askRN);
+
+            console.log('[CheckPaymentToss] 환경 감지:', {
+                isRNWebView,
+                hasReactNativeWebView: !!window.ReactNativeWebView,
+                hasAskRN: !!window.__askRN,
+                userAgent: navigator.userAgent
+            });
+
+            if (isRNWebView) {
+                console.log('[CheckPaymentToss] RN WebView 환경에서 페이지 이동 시도');
+
+                // 방법 1: RN에게 페이지 이동 요청
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'NAVIGATE',
+                        path: path
+                    }));
+                    console.log('[CheckPaymentToss] postMessage로 RN에게 이동 요청 전송');
+                }
+
+                // 방법 2: __askRN 사용
+                if (window.__askRN) {
+                    window.__askRN('NAVIGATE', { path });
+                    console.log('[CheckPaymentToss] __askRN으로 RN에게 이동 요청 전송');
+                }
+
+                // 방법 3: RN에게 쿠폰 선택 모달 요청 (URL 차단 우회)
+                if (path === '/check-coupon') {
+                    setTimeout(() => {
+                        console.log('[CheckPaymentToss] RN 쿠폰 모달 요청 시도');
+                        if (window.ReactNativeWebView) {
+                            window.ReactNativeWebView.postMessage(JSON.stringify({
+                                type: 'SHOW_COUPON_MODAL',
+                                data: { storeId: SK?.storeId, passId: SK?.selectedTicket?.id }
+                            }));
+                        }
+                        if (window.__askRN) {
+                            window.__askRN('SHOW_COUPON_MODAL', {
+                                storeId: SK?.storeId,
+                                passId: SK?.selectedTicket?.id
+                            });
+                        }
+                    }, 50);
+                }
+
+                // 방법 4: 강제 URL 변경 (기존 방법)
+                setTimeout(() => {
+                    console.log('[CheckPaymentToss] 강제 URL 변경 시도');
+                    window.location.href = window.location.origin + path;
+                }, 200);
+
+                // 방법 5: React Router 폴백
+                setTimeout(() => {
+                    console.log('[CheckPaymentToss] React Router 폴백 시도');
+                    navigate(path);
+                }, 100);
+            } else {
+                // 일반 웹 환경에서는 바로 React Router 사용
+                console.log('[CheckPaymentToss] 일반 웹 환경에서 React Router 사용');
+                navigate(path);
+            }
+        } catch (error) {
+            console.error('[CheckPaymentToss] 페이지 이동 오류:', error);
+            // 최종 폴백: 강제 URL 변경
+            try {
+                window.location.href = window.location.origin + path;
+            } catch (e) {
+                console.error('[CheckPaymentToss] 강제 URL 변경도 실패:', e);
+            }
+        }
+    };
 
     // 토스페이먼츠 설정 (기존 키 사용)
     const clientKey = useMemo(() => {
@@ -190,6 +267,25 @@ export default function CheckPaymentToss() {
         return `${total.toLocaleString()}원`;
     }, [passKind, normalizedStudy, legacyPrice, discount]);
 
+    // ✅ iOS 스와이프 뒤로가기 제스처 차단
+    useEffect(() => {
+        const preventSwipeBack = (e) => {
+            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
+            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        document.addEventListener('touchstart', preventSwipeBack, { passive: false });
+        document.addEventListener('touchmove', preventSwipeBack, { passive: false });
+
+        return () => {
+            document.removeEventListener('touchstart', preventSwipeBack);
+            document.removeEventListener('touchmove', preventSwipeBack);
+        };
+    }, []);
+
     useEffect(() => {
         const onInit = (e) => {
             console.log('[CheckPaymentToss:web] skysunny:init detail =', e.detail);
@@ -246,9 +342,42 @@ export default function CheckPaymentToss() {
                     discount,
                     ticketPrice: ticketInfo?.selectedTicket?.price,
                     widgetAmount: lastAmountRef.current
-                })
+                }),
+                // 페이지 이동 테스트 함수
+                testNavigation: (path = '/check-coupon') => {
+                    console.log('[PaymentDebug] 페이지 이동 테스트 시작:', path);
+                    movePage(path);
+                },
+                // 강제 페이지 이동 함수
+                forceNavigation: (path = '/check-coupon') => {
+                    console.log('[PaymentDebug] 강제 페이지 이동 시작:', path);
+                    try {
+                        window.location.href = window.location.origin + path;
+                    } catch (e) {
+                        console.error('[PaymentDebug] 강제 이동 실패:', e);
+                    }
+                },
+                // 환경 정보 출력
+                checkEnvironment: () => {
+                    const env = {
+                        url: window.location.href,
+                        origin: window.location.origin,
+                        pathname: window.location.pathname,
+                        hasReactNativeWebView: !!window.ReactNativeWebView,
+                        hasAskRN: !!window.__askRN,
+                        userAgent: navigator.userAgent,
+                        isOnline: navigator.onLine,
+                        cookieEnabled: navigator.cookieEnabled
+                    };
+                    console.log('[PaymentDebug] 환경 정보:', env);
+                    return env;
+                }
             };
             console.log('[CheckPaymentToss] window.__paymentDebug 준비 완료');
+            console.log('[CheckPaymentToss] 사용 가능한 디버그 함수:');
+            console.log('- window.__paymentDebug.testNavigation() : 페이지 이동 테스트');
+            console.log('- window.__paymentDebug.forceNavigation() : 강제 페이지 이동');
+            console.log('- window.__paymentDebug.checkEnvironment() : 환경 정보 확인');
         } catch (e) {
             console.warn('[CheckPaymentToss] 디버그 함수 설정 실패:', e);
         }
@@ -499,7 +628,7 @@ export default function CheckPaymentToss() {
     };
 
     return (
-        <div className="container checkout-page">
+        <div className="container checkout-page" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
             {/* 상단 바 */}
             <div className="top-bar">
                 <div className="top-bar-left">
@@ -570,7 +699,29 @@ export default function CheckPaymentToss() {
 
                         <div className="info-row">
                             <span className="info-title">할인쿠폰</span>
-                            <button className="coupon-btn" onClick={() => movePage('/check-coupon')}>쿠폰선택</button>
+                            <button
+                                className="coupon-btn"
+                                onClick={(e) => {
+                                    console.log('[CheckPaymentToss] 쿠폰선택 버튼 클릭됨');
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    // 즉시 페이지 이동 시도
+                                    movePage('/check-coupon');
+
+                                    // 추가 디버깅을 위한 환경 정보 출력
+                                    console.log('[CheckPaymentToss] 현재 환경:', {
+                                        url: window.location.href,
+                                        origin: window.location.origin,
+                                        pathname: window.location.pathname,
+                                        hasReactNativeWebView: !!window.ReactNativeWebView,
+                                        hasAskRN: !!window.__askRN,
+                                        userAgent: navigator.userAgent.substring(0, 100)
+                                    });
+                                }}
+                            >
+                                쿠폰선택
+                            </button>
                         </div>
 
                         <div className="info-row coupon-guide-text">
