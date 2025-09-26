@@ -15,9 +15,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Navigate to="/check-payment-toss" />} />
-        {/* <Route path="/check-payment" element={<CheckPayment />} /> */}
-        <Route path="/check-payment-toss" element={<CheckPaymentToss />} />
+        <Route path="/" element={<Navigate to="/cash" />} />
+        <Route path="/cash" element={<CheckPaymentToss />} />
         <Route path="/complete-payment" element={<CompletePayment />} />
         <Route path="/check-coupon" element={<CheckCoupon />} />
         <Route path="/qr-code" element={<QrCode />} />
