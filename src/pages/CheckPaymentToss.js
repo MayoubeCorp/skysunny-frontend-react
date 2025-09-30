@@ -513,8 +513,10 @@ export default function CheckPaymentToss() {
                                         console.log('🟢 [onClickBuy] 성공 - orderNumber:', detail.orderNumber);
                                         resolve(detail);
                                     } else {
-                                        console.error('🔴 [onClickBuy] 실패 - error:', detail.error);
-                                        reject(new Error(detail.error || '임시 주문 생성 실패'));
+                                        const errorMsg = detail.error || '임시 주문 생성 실패';
+                                        console.error('🔴 [onClickBuy] 실패 - error:', errorMsg);
+                                        console.error('🔴 [onClickBuy] 전체 응답:', detail);
+                                        reject(new Error(errorMsg));
                                     }
                                 }
                             };
@@ -555,19 +557,29 @@ export default function CheckPaymentToss() {
                             }
                         }
                     } catch (error) {
-                        console.error('🔴 [onClickBuy] RN 임시 주문 생성 실패:', error);
-                        alert(`임시 주문 생성에 실패했습니다.\n${error.message}\n\n다시 시도해주세요.`);
+                        // console.error('🔴 [onClickBuy] RN 임시 주문 생성 실패:', error);
+                        // console.error('🔴 [onClickBuy] 에러 상세:', {
+                        //     message: error.message,
+                        //     stack: error.stack,
+                        //     error: error
+                        // });
+
+                        // 사용자에게 더 명확한 에러 메시지 표시
+                        // let userMessage = error.message || '알 수 없는 오류';
+                        // if (error.message?.includes('타임아웃')) {
+                        //     userMessage = '결제 준비에 시간이 오래 걸리고 있습니다.\n\n가능한 원인:\n• 네트워크 연결 불안정\n• 서버 응답 지연\n\n잠시 후 다시 시도해주세요.';
+                        // }
+
+                        // alert(`임시 주문 생성에 실패했습니다.\n\n${userMessage}`);
                         return;
                     }
                 } else {
-                    console.error('🔴 [onClickBuy] window.__askRN 함수가 없습니다!');
-                    console.error('🔴 [onClickBuy] window 객체:', Object.keys(window).filter(k => k.includes('ask') || k.includes('RN') || k.includes('SKYSUNNY')));
+                    // console.error('🔴 [onClickBuy] window.__askRN 함수가 없습니다!');
+                    // console.error('🔴 [onClickBuy] window 객체:', Object.keys(window).filter(k => k.includes('ask') || k.includes('RN') || k.includes('SKYSUNNY')));
                 }
 
                 // 여전히 주문번호가 없으면 에러 처리
                 if (!orderId) {
-                    console.error('🔴 [onClickBuy] 최종 확인: 주문번호 여전히 없음');
-                    alert('주문번호를 받아오지 못했습니다.\n다시 시도해주세요.');
                     return;
                 }
             }
@@ -860,11 +872,7 @@ export default function CheckPaymentToss() {
                 </div>
 
                 <div className="toss-payment-widget">
-                    <div className="section2-title-box">
-                        <div className="text-box">
-                            <span className="font-bm section-title">결제 방법</span>
-                        </div>
-                    </div>
+
 
                     {!isPaymentReady && (
                         <div style={{ padding: '40px 20px', textAlign: 'center', color: '#666', fontSize: '14px' }}>
@@ -877,6 +885,15 @@ export default function CheckPaymentToss() {
 
                     {/* 약관 동의 위젯 */}
                     <div id="agreement" style={{ marginBottom: '16px', minHeight: '50px', width: '100%' }}></div>
+
+                    <div className="toss-payment-widget-footer" style={{ marginBottom: '20px', paddingLeft: '20px', }}>
+                        <span className="font-noto" style={{ color: '#999999', fontSize: '11px', lineHeight: '16px', whiteSpace: 'pre-line' }}>
+                            주식회사 스카스카 | 대표 : 김형래 {"\n"}
+                            주소 : 경기도 남양주시 별내중앙로 30, 305-1849호(별내동){"\n"}
+                            사업자등록번호 : 137-87-03668 | 통신판매업신고번호 : 미정{"\n"}
+                            SKASKA All rights reserved
+                        </span>
+                    </div>
                 </div>
 
                 <div className="scroll-spacer" aria-hidden />
