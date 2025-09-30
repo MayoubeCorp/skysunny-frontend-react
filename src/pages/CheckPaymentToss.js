@@ -6,7 +6,6 @@ import Banner from '../components/BannerSlider';
 import backArrow from '../img/common/backarrow.png';
 import close from '../img/common/circleClose.png';
 import copy from '../img/common/copy.png';
-import bannerImg from '../img/home/bannerexample.png';
 import infoIcon from '../img/home/information.png';
 import '../styles/main.scss';
 
@@ -26,7 +25,16 @@ export default function CheckPaymentToss() {
     const [showCopyNotification, setShowCopyNotification] = useState(false);
     const [showDebugInfo, setShowDebugInfo] = useState(false);
 
-    const bannerImages2 = [bannerImg, bannerImg, bannerImg];
+    // 배너 데이터 (BannerSlider 컴포넌트 형식에 맞춤)
+    const bannerImages2 = useMemo(() => {
+        // RN에서 전달된 배너가 있으면 사용
+        const rnBanners = SK?.banners || window?.SKYSUNNY?.banners;
+        if (rnBanners && Array.isArray(rnBanners) && rnBanners.length > 0) {
+            return rnBanners;
+        }
+        // 배너가 없으면 빈 배열 반환 (BannerSlider가 자체적으로 null 처리)
+        return [];
+    }, [window?.SKYSUNNY?.banners]);
 
     const SK = useMemo(() => window?.SKYSUNNY || {}, []);
 
@@ -716,10 +724,8 @@ export default function CheckPaymentToss() {
                     </div>
                 )} */}
 
-                {/* 배너 */}
-                <div className="banner-container">
-                    <Banner banners={bannerImages2} type="sub2" />
-                </div>
+                {/* 배너 - BannerSlider 컴포넌트 (배너가 없으면 자동으로 null 반환) */}
+                <Banner banners={bannerImages2} type="sub2" />
 
                 {/* 구매 정보 */}
                 <div className="info-container">
