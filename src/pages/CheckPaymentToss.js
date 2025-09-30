@@ -24,89 +24,13 @@ export default function CheckPaymentToss() {
 
     // URL 복사 알림 상태
     const [showCopyNotification, setShowCopyNotification] = useState(false);
+    const [showDebugInfo, setShowDebugInfo] = useState(false);
 
     const bannerImages2 = [bannerImg, bannerImg, bannerImg];
 
     const SK = useMemo(() => window?.SKYSUNNY || {}, []);
 
-    const movePage = (path) => {
-        console.log('[CheckPaymentToss] movePage 호출됨:', path);
-
-        try {
-            // RN WebView 환경 감지
-            const isRNWebView = typeof window !== 'undefined' &&
-                (window.ReactNativeWebView || window.__askRN);
-
-            console.log('[CheckPaymentToss] 환경 감지:', {
-                isRNWebView,
-                hasReactNativeWebView: !!window.ReactNativeWebView,
-                hasAskRN: !!window.__askRN,
-                userAgent: navigator.userAgent
-            });
-
-            if (isRNWebView) {
-                console.log('[CheckPaymentToss] RN WebView 환경에서 페이지 이동 시도');
-
-                // 방법 1: RN에게 페이지 이동 요청
-                if (window.ReactNativeWebView) {
-                    window.ReactNativeWebView.postMessage(JSON.stringify({
-                        type: 'NAVIGATE',
-                        path: path
-                    }));
-                    console.log('[CheckPaymentToss] postMessage로 RN에게 이동 요청 전송');
-                }
-
-                // 방법 2: __askRN 사용
-                if (window.__askRN) {
-                    window.__askRN('NAVIGATE', { path });
-                    console.log('[CheckPaymentToss] __askRN으로 RN에게 이동 요청 전송');
-                }
-
-                // 방법 3: RN에게 쿠폰 선택 모달 요청 (URL 차단 우회)
-                if (path === '/check-coupon') {
-                    setTimeout(() => {
-                        console.log('[CheckPaymentToss] RN 쿠폰 모달 요청 시도');
-                        if (window.ReactNativeWebView) {
-                            window.ReactNativeWebView.postMessage(JSON.stringify({
-                                type: 'SHOW_COUPON_MODAL',
-                                data: { storeId: SK?.storeId, passId: SK?.selectedTicket?.id }
-                            }));
-                        }
-                        if (window.__askRN) {
-                            window.__askRN('SHOW_COUPON_MODAL', {
-                                storeId: SK?.storeId,
-                                passId: SK?.selectedTicket?.id
-                            });
-                        }
-                    }, 50);
-                }
-
-                // 방법 4: 강제 URL 변경 (기존 방법)
-                setTimeout(() => {
-                    console.log('[CheckPaymentToss] 강제 URL 변경 시도');
-                    window.location.href = window.location.origin + path;
-                }, 200);
-
-                // 방법 5: React Router 폴백
-                setTimeout(() => {
-                    console.log('[CheckPaymentToss] React Router 폴백 시도');
-                    navigate(path);
-                }, 100);
-            } else {
-                // 일반 웹 환경에서는 바로 React Router 사용
-                console.log('[CheckPaymentToss] 일반 웹 환경에서 React Router 사용');
-                navigate(path);
-            }
-        } catch (error) {
-            console.error('[CheckPaymentToss] 페이지 이동 오류:', error);
-            // 최종 폴백: 강제 URL 변경
-            try {
-                window.location.href = window.location.origin + path;
-            } catch (e) {
-                console.error('[CheckPaymentToss] 강제 URL 변경도 실패:', e);
-            }
-        }
-    };
+    const movePage = (path) => navigate(path);
 
     // 토스페이먼츠 설정 (기존 키 사용)
     const clientKey = useMemo(() => {
@@ -133,43 +57,18 @@ export default function CheckPaymentToss() {
         if (v == null || v === undefined) return 0;
 
         if (typeof v === 'number') {
-            const result = Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
-            console.log('[parseAmount] 숫자 입력:', { input: v, output: result });
-            return result;
+            return Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0;
         }
 
         if (typeof v === 'string') {
             const cleaned = v.replace(/[^\d]/g, '');
             const num = Number(cleaned);
-            const result = Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
-            console.log('[parseAmount] 문자열 입력:', {
-                input: v,
-                cleaned: cleaned,
-                parsed: num,
-                output: result
-            });
-            return result;
+            return Number.isFinite(num) && num >= 0 ? Math.floor(num) : 0;
         }
 
-        console.log('[parseAmount] 기타 타입:', { input: v, type: typeof v, output: 0 });
         return 0;
     }, []);
 
-    // 전화번호 형식 정리 함수 (토스페이먼츠 v2 요구사항)
-    const formatPhoneNumber = useCallback((phone) => {
-        if (!phone || typeof phone !== 'string') return undefined;
-
-        // 하이픈, 공백, 괄호 등 특수문자 제거
-        const cleaned = phone.replace(/[^\d]/g, '');
-
-        // 숫자만 남은 전화번호가 유효한지 확인 (10-11자리)
-        if (cleaned.length >= 10 && cleaned.length <= 11) {
-            return cleaned;
-        }
-
-        // 유효하지 않은 경우 undefined 반환 (토스페이먼츠에서 선택사항)
-        return undefined;
-    }, []);
 
     // passKind
     const passKind = useMemo(
@@ -217,13 +116,7 @@ export default function CheckPaymentToss() {
     // 할인 & 결제금액
     const legacyPrice = useMemo(() => {
         const price = ticketInfo?.selectedTicket?.price;
-        const parsed = parseAmount(price);
-        console.log('[CheckPaymentToss] legacyPrice 계산:', {
-            rawPrice: price,
-            parsedPrice: parsed,
-            ticketInfo: ticketInfo?.selectedTicket
-        });
-        return parsed;
+        return parseAmount(price);
     }, [ticketInfo, parseAmount]);
 
     const discount = useMemo(
@@ -245,15 +138,6 @@ export default function CheckPaymentToss() {
             result = 1000;
         }
 
-        console.log('[CheckPaymentToss] finalAmount 계산:', {
-            passKind,
-            legacyPrice,
-            discount,
-            result,
-            ticketPrice: ticketInfo?.selectedTicket?.price,
-            hasTicketInfo: !!ticketInfo,
-            hasSelectedTicket: !!ticketInfo?.selectedTicket
-        });
 
         return result;
     }, [passKind, normalizedStudy, legacyPrice, discount, ticketInfo]);
@@ -267,29 +151,30 @@ export default function CheckPaymentToss() {
         return `${total.toLocaleString()}원`;
     }, [passKind, normalizedStudy, legacyPrice, discount]);
 
-    // ✅ iOS 스와이프 뒤로가기 제스처 차단
+    // RN 데이터 주입 확인
     useEffect(() => {
-        const preventSwipeBack = (e) => {
-            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
-            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
-                e.preventDefault();
-                e.stopPropagation();
+        const checkRNData = () => {
+            console.log('[CheckPaymentToss] 현재 window.SKYSUNNY 상태:', window.SKYSUNNY);
+            if (window.SKYSUNNY && Object.keys(window.SKYSUNNY).length > 0) {
+                console.log('[CheckPaymentToss] RN 데이터 감지됨');
+                // 이미 onInit에서 처리되므로 여기서는 로그만
             }
         };
 
-        document.addEventListener('touchstart', preventSwipeBack, { passive: false });
-        document.addEventListener('touchmove', preventSwipeBack, { passive: false });
+        // 페이지 로드 후 주기적으로 확인
+        const interval = setInterval(checkRNData, 2000);
+        setTimeout(() => clearInterval(interval), 10000); // 10초 후 중단
 
-        return () => {
-            document.removeEventListener('touchstart', preventSwipeBack);
-            document.removeEventListener('touchmove', preventSwipeBack);
-        };
+        return () => clearInterval(interval);
     }, []);
 
     useEffect(() => {
+        console.log('🌟 [useEffect:onInit] 마운트됨');
+        console.log('🌟 [useEffect:onInit] window.SKYSUNNY:', window.SKYSUNNY);
+        console.log('🌟 [useEffect:onInit] window.__askRN 존재:', typeof window.__askRN === 'function');
+
         const onInit = (e) => {
-            console.log('[CheckPaymentToss:web] skysunny:init detail =', e.detail);
-            console.log('[CheckPaymentToss:web] selectedTicket 정보:', e.detail?.selectedTicket);
+            console.log('🌟 [onInit] 이벤트 수신:', e.detail);
 
             const defaultTicketInfo = {
                 storeName: '매장',
@@ -310,77 +195,28 @@ export default function CheckPaymentToss() {
                 }
             };
 
-            console.log('[CheckPaymentToss:web] 병합된 ticketInfo:', mergedInfo);
+            // orderNumber 확인
+            if (e.detail?.orderNumber) {
+                console.log('🌟 [onInit] ✅ orderNumber 발견:', e.detail.orderNumber);
+                mergedInfo.orderNumber = e.detail.orderNumber;
+            } else {
+                console.log('🌟 [onInit] ⚠️ orderNumber 없음');
+            }
+
+            console.log('🌟 [onInit] ticketInfo 업데이트:', mergedInfo);
             setTicketInfo(mergedInfo);
         };
 
         document.addEventListener('skysunny:init', onInit);
 
         if (window.SKYSUNNY) {
-            console.log('[CheckPaymentToss:web] window.SKYSUNNY 즉시 설정:', window.SKYSUNNY);
+            console.log('🌟 [useEffect:onInit] window.SKYSUNNY 존재 - 즉시 호출');
             onInit({ detail: window.SKYSUNNY });
         } else {
-            console.log('[CheckPaymentToss:web] window.SKYSUNNY 없음, 기본값으로 초기화');
+            console.log('🌟 [useEffect:onInit] window.SKYSUNNY 없음 - 빈 객체로 호출');
             onInit({ detail: {} });
         }
 
-        // 디버깅 유틸
-        try {
-            window.__paymentDebug = {
-                parseAmount,
-                testAmountParsing: () => {
-                    const testCases = ['35,000원', '35000원', '35000', 35000, '1,234,567원', '0원', '', null, undefined, '원', 'abc', -1000];
-                    console.log('[PaymentDebug] 금액 파싱 테스트:');
-                    testCases.forEach(testCase => {
-                        const result = parseAmount(testCase);
-                        console.log(`  ${JSON.stringify(testCase)} → ${result} (${typeof result})`);
-                    });
-                },
-                currentAmounts: () => ({
-                    finalAmount,
-                    legacyPrice,
-                    discount,
-                    ticketPrice: ticketInfo?.selectedTicket?.price,
-                    widgetAmount: lastAmountRef.current
-                }),
-                // 페이지 이동 테스트 함수
-                testNavigation: (path = '/check-coupon') => {
-                    console.log('[PaymentDebug] 페이지 이동 테스트 시작:', path);
-                    movePage(path);
-                },
-                // 강제 페이지 이동 함수
-                forceNavigation: (path = '/check-coupon') => {
-                    console.log('[PaymentDebug] 강제 페이지 이동 시작:', path);
-                    try {
-                        window.location.href = window.location.origin + path;
-                    } catch (e) {
-                        console.error('[PaymentDebug] 강제 이동 실패:', e);
-                    }
-                },
-                // 환경 정보 출력
-                checkEnvironment: () => {
-                    const env = {
-                        url: window.location.href,
-                        origin: window.location.origin,
-                        pathname: window.location.pathname,
-                        hasReactNativeWebView: !!window.ReactNativeWebView,
-                        hasAskRN: !!window.__askRN,
-                        userAgent: navigator.userAgent,
-                        isOnline: navigator.onLine,
-                        cookieEnabled: navigator.cookieEnabled
-                    };
-                    console.log('[PaymentDebug] 환경 정보:', env);
-                    return env;
-                }
-            };
-            console.log('[CheckPaymentToss] window.__paymentDebug 준비 완료');
-            console.log('[CheckPaymentToss] 사용 가능한 디버그 함수:');
-            console.log('- window.__paymentDebug.testNavigation() : 페이지 이동 테스트');
-            console.log('- window.__paymentDebug.forceNavigation() : 강제 페이지 이동');
-            console.log('- window.__paymentDebug.checkEnvironment() : 환경 정보 확인');
-        } catch (e) {
-            console.warn('[CheckPaymentToss] 디버그 함수 설정 실패:', e);
-        }
 
         return () => {
             document.removeEventListener('skysunny:init', onInit);
@@ -400,13 +236,11 @@ export default function CheckPaymentToss() {
                 (typeof d.orderAmount === 'number' ? d.orderAmount : null);
 
             if (Number.isInteger(serverAmount) && serverAmount > 0) {
-                console.log('[CheckPaymentToss] RN serverAmount 수신:', serverAmount);
                 setTicketInfo((prev) => ({ ...(prev || {}), serverAmount }));
                 try {
                     if (widgets) {
                         await widgets.setAmount({ currency: "KRW", value: serverAmount });
                         lastAmountRef.current = serverAmount;
-                        console.log('[CheckPaymentToss] 위젯 금액을 serverAmount로 동기화');
                     }
                 } catch (err) {
                     console.warn('[CheckPaymentToss] serverAmount 위젯 동기화 실패:', err);
@@ -430,9 +264,6 @@ export default function CheckPaymentToss() {
 
         async function initializePaymentWidget() {
             try {
-                console.log('[CheckPaymentToss] === 토스 결제 위젯 초기화 시작 (샌드박스 방식) ===');
-                console.log('[CheckPaymentToss] clientKey:', clientKey);
-                console.log('[CheckPaymentToss] customerKey:', customerKey);
 
                 if (!clientKey) {
                     throw new Error('clientKey가 없습니다');
@@ -443,7 +274,6 @@ export default function CheckPaymentToss() {
                 const agreementElement = document.getElementById("agreement");
 
                 if (!paymentMethodElement || !agreementElement) {
-                    console.warn('[CheckPaymentToss] DOM 요소가 아직 준비되지 않음, 재시도...');
                     setTimeout(initializePaymentWidget, 100);
                     return;
                 }
@@ -458,7 +288,6 @@ export default function CheckPaymentToss() {
                 const tossPayments = await loadTossPayments(clientKey);
                 if (!isMounted) return;
 
-                console.log('[CheckPaymentToss] TossPayments v2 SDK 로드 성공');
 
                 // 위젯 인스턴스 생성 (샌드박스에서는 ANONYMOUS 사용)
                 const widgets = tossPayments.widgets({
@@ -472,10 +301,9 @@ export default function CheckPaymentToss() {
                     value: finalAmount && finalAmount > 0 ? finalAmount : 50000, // 기본 50,000원
                 };
 
-                console.log('[CheckPaymentToss] 위젯 금액 설정:', amount);
                 await widgets.setAmount(amount);
 
-                // 결제 수단과 약관 렌더링 (sky-sunny variantKey 사용)
+                // 결제 수단과 약관 렌더링 (기본 설정 사용)
                 await Promise.all([
                     widgets.renderPaymentMethods({
                         selector: "#payment-method",
@@ -487,7 +315,14 @@ export default function CheckPaymentToss() {
                     }),
                 ]);
 
-                console.log('[CheckPaymentToss] 위젯 렌더링 완료');
+                // iframe에 referrerPolicy 설정
+                setTimeout(() => {
+                    const iframes = document.querySelectorAll('#payment-method iframe, #agreement iframe');
+                    iframes.forEach(iframe => {
+                        iframe.setAttribute('referrerpolicy', 'no-referrer');
+                        iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation');
+                    });
+                }, 100);
 
                 if (!isMounted) return;
 
@@ -495,7 +330,6 @@ export default function CheckPaymentToss() {
                 setIsPaymentReady(true);
                 lastAmountRef.current = amount.value;
 
-                console.log('[CheckPaymentToss] === 토스페이먼츠 위젯 초기화 완료 ===');
             } catch (error) {
                 console.error('[CheckPaymentToss] 결제 위젯 초기화 실패:', error);
                 if (isMounted) {
@@ -526,7 +360,6 @@ export default function CheckPaymentToss() {
                 const agreementElement = document.getElementById("agreement");
                 if (paymentMethodElement) paymentMethodElement.innerHTML = '';
                 if (agreementElement) agreementElement.innerHTML = '';
-                console.log('[CheckPaymentToss] 위젯 정리 완료');
             } catch (error) {
                 console.warn('[CheckPaymentToss] 위젯 정리 중 오류:', error);
             }
@@ -541,10 +374,6 @@ export default function CheckPaymentToss() {
 
         if (lastAmountRef.current === newAmount) return;
 
-        console.log('[CheckPaymentToss] 결제 금액 업데이트:', {
-            from: lastAmountRef.current,
-            to: newAmount
-        });
 
         const updateAmount = async () => {
             try {
@@ -553,7 +382,6 @@ export default function CheckPaymentToss() {
                     value: newAmount
                 });
                 lastAmountRef.current = newAmount;
-                console.log('[CheckPaymentToss] 위젯 금액 업데이트 성공:', newAmount);
             } catch (error) {
                 console.error('[CheckPaymentToss] 금액 업데이트 오류:', error);
             }
@@ -566,9 +394,74 @@ export default function CheckPaymentToss() {
     // 랜덤 문자열 생성 함수 (샌드박스 방식)
     const generateRandomString = () => window.btoa(Math.random()).slice(0, 20);
 
+    // 실제 주문번호 가져오기
+    const getActualOrderNumber = useCallback(() => {
+        console.log('[getActualOrderNumber] 시작 - 전체 상태:', {
+            'SK?.order?.id': SK?.order?.id,
+            'SK?.orderNumber': SK?.orderNumber,
+            'ticketInfo?.orderNumber': ticketInfo?.orderNumber,
+            'window.SKYSUNNY': window.SKYSUNNY
+        });
+
+        // 1순위: window.SKYSUNNY에서 order.id 또는 orderNumber
+        if (SK?.order?.id) {
+            console.log('[getActualOrderNumber] ✅ SK.order.id 발견:', SK.order.id);
+            return SK.order.id;
+        }
+        if (SK?.orderNumber) {
+            console.log('[getActualOrderNumber] ✅ SK.orderNumber 발견:', SK.orderNumber);
+            return SK.orderNumber;
+        }
+
+        // 2순위: sessionStorage의 toss:draft
+        try {
+            const draftStr = sessionStorage.getItem('toss:draft');
+            console.log('[getActualOrderNumber] sessionStorage toss:draft 확인:', draftStr);
+            if (draftStr) {
+                const draft = JSON.parse(draftStr);
+                if (draft?.orderNumber) {
+                    console.log('[getActualOrderNumber] ✅ sessionStorage draft.orderNumber 발견:', draft.orderNumber);
+                    return draft.orderNumber;
+                }
+            }
+        } catch (error) {
+            console.warn('[getActualOrderNumber] sessionStorage draft parse error:', error);
+        }
+
+        // 3순위: ticketInfo에서 orderNumber (RN에서 전달한 경우)
+        if (ticketInfo?.orderNumber) {
+            console.log('[getActualOrderNumber] ✅ ticketInfo.orderNumber 발견:', ticketInfo.orderNumber);
+            return ticketInfo.orderNumber;
+        }
+
+        // 4순위: localStorage의 lastOrderNumber
+        const lastOrderNumber = localStorage.getItem('lastOrderNumber');
+        if (lastOrderNumber) {
+            console.log('[getActualOrderNumber] ✅ localStorage lastOrderNumber 발견:', lastOrderNumber);
+            return lastOrderNumber;
+        }
+
+        // 5순위: URL 파라미터
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const orderFromUrl = params.get('orderNumber') || params.get('orderId');
+            if (orderFromUrl) {
+                console.log('[getActualOrderNumber] ✅ URL orderNumber 발견:', orderFromUrl);
+                return orderFromUrl;
+            }
+        }
+
+        console.error('[getActualOrderNumber] ❌ 주문번호를 어디서도 찾을 수 없습니다!');
+        return null;
+    }, [SK, ticketInfo]);
+
     // 토스페이먼츠 샌드박스 방식: 구매하기 버튼 클릭
     const onClickBuy = async () => {
-        console.log('[CheckPaymentToss] 구매하기 버튼 클릭 (샌드박스 방식)');
+        console.log('🔵 [onClickBuy] 구매하기 버튼 클릭됨');
+        console.log('🔵 [onClickBuy] widgets:', !!widgets);
+        console.log('🔵 [onClickBuy] isPaymentReady:', isPaymentReady);
+        console.log('🔵 [onClickBuy] window.__askRN 존재:', typeof window.__askRN === 'function');
+        console.log('🔵 [onClickBuy] window.SKYSUNNY:', window.SKYSUNNY);
 
         if (!widgets || !isPaymentReady) {
             alert('결제 위젯 준비 중입니다. 잠시 후 다시 시도하세요.');
@@ -576,33 +469,144 @@ export default function CheckPaymentToss() {
         }
 
         try {
-            // 샌드박스 방식: 간단한 결제 요청
-            const orderId = generateRandomString();
-            const orderName = ticketInfo?.selectedTicket?.name || "토스 티셔츠 외 2건";
-            const customerName = SK?.customerName || ticketInfo?.customerName || "김토스";
-            const customerEmail = SK?.customerEmail || ticketInfo?.customerEmail || "customer123@gmail.com";
+            // 실제 주문번호 가져오기
+            console.log('🔵 [onClickBuy] getActualOrderNumber 호출 시작');
+            let orderId = getActualOrderNumber();
+            console.log('🔵 [onClickBuy] getActualOrderNumber 결과:', orderId);
 
-            // 성공/실패 URL 설정 (샌드박스 방식)
+            // 주문번호가 없으면 RN에 임시 주문 생성 요청
+            if (!orderId) {
+                console.log('🟡 [onClickBuy] 주문번호가 없음 - RN에 임시 주문 생성 요청 시작');
+
+                // RN에 임시 주문 생성 요청 (window.__askRN 사용)
+                if (typeof window.__askRN === 'function') {
+                    try {
+                        console.log('🟡 [onClickBuy] window.__askRN 함수 존재 확인됨');
+
+                        // Promise로 응답 대기
+                        const draftPromise = new Promise((resolve, reject) => {
+                            console.log('🟡 [onClickBuy] Promise 생성 - 응답 대기 시작');
+
+                            const timeout = setTimeout(() => {
+                                console.error('🔴 [onClickBuy] 10초 타임아웃 - RN 응답 없음');
+                                reject(new Error('임시 주문 생성 타임아웃 (10초)'));
+                            }, 10000); // 10초 타임아웃
+
+                            // 응답 리스너 등록
+                            const handleReply = (event) => {
+                                const detail = event.detail || {};
+                                console.log('🟢 [onClickBuy] skysunny:reply 이벤트 수신:', {
+                                    action: detail.action,
+                                    type: detail.type,
+                                    ok: detail.ok,
+                                    orderNumber: detail.orderNumber,
+                                    error: detail.error,
+                                    fullDetail: detail
+                                });
+
+                                if (detail.action === 'REQUEST_DRAFT' || detail.type === 'REQUEST_DRAFT') {
+                                    console.log('🟢 [onClickBuy] REQUEST_DRAFT 응답 확인됨');
+                                    clearTimeout(timeout);
+                                    document.removeEventListener('skysunny:reply', handleReply);
+
+                                    if (detail.ok && detail.orderNumber) {
+                                        console.log('🟢 [onClickBuy] 성공 - orderNumber:', detail.orderNumber);
+                                        resolve(detail);
+                                    } else {
+                                        console.error('🔴 [onClickBuy] 실패 - error:', detail.error);
+                                        reject(new Error(detail.error || '임시 주문 생성 실패'));
+                                    }
+                                }
+                            };
+
+                            console.log('🟡 [onClickBuy] skysunny:reply 이벤트 리스너 등록');
+                            document.addEventListener('skysunny:reply', handleReply);
+                        });
+
+                        // RN에 요청 전송
+                        const requestPayload = {
+                            storeName: ticketInfo?.storeName,
+                            productName: ticketInfo?.selectedTicket?.name || ticketInfo?.productName,
+                            amount: finalAmount || 50000,
+                            passType: passKind || 'cash'
+                        };
+                        console.log('🟡 [onClickBuy] RN에 REQUEST_DRAFT 전송:', requestPayload);
+                        window.__askRN('REQUEST_DRAFT', requestPayload);
+                        console.log('🟡 [onClickBuy] REQUEST_DRAFT 전송 완료 - 응답 대기 중...');
+
+                        // 응답 대기
+                        const draftResult = await draftPromise;
+                        console.log('🟢 [onClickBuy] Promise 완료 - draftResult:', draftResult);
+
+                        if (draftResult?.orderNumber) {
+                            orderId = draftResult.orderNumber;
+                            console.log('🟢 [onClickBuy] RN으로부터 주문번호 받음:', orderId);
+
+                            // window.SKYSUNNY에 저장
+                            if (window.SKYSUNNY) {
+                                window.SKYSUNNY.orderNumber = orderId;
+                                if (draftResult.data?.order) {
+                                    window.SKYSUNNY.order = draftResult.data.order;
+                                }
+                                if (draftResult.tossClientKey) {
+                                    window.SKYSUNNY.tossClientKey = draftResult.tossClientKey;
+                                }
+                                console.log('🟢 [onClickBuy] window.SKYSUNNY 업데이트 완료:', window.SKYSUNNY);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('🔴 [onClickBuy] RN 임시 주문 생성 실패:', error);
+                        alert(`임시 주문 생성에 실패했습니다.\n${error.message}\n\n다시 시도해주세요.`);
+                        return;
+                    }
+                } else {
+                    console.error('🔴 [onClickBuy] window.__askRN 함수가 없습니다!');
+                    console.error('🔴 [onClickBuy] window 객체:', Object.keys(window).filter(k => k.includes('ask') || k.includes('RN') || k.includes('SKYSUNNY')));
+                }
+
+                // 여전히 주문번호가 없으면 에러 처리
+                if (!orderId) {
+                    console.error('🔴 [onClickBuy] 최종 확인: 주문번호 여전히 없음');
+                    alert('주문번호를 받아오지 못했습니다.\n다시 시도해주세요.');
+                    return;
+                }
+            }
+
+            console.log('[onClickBuy] 결제 진행 - orderNumber:', orderId);
+
+            const orderName = ticketInfo?.selectedTicket?.name || "스카이써니 이용권";
+            const customerName = SK?.customerName || ticketInfo?.customerName || "고객";
+            const customerEmail = SK?.customerEmail || ticketInfo?.customerEmail || "test@example.com";
+
+            // sessionStorage에 주문 정보 저장
+            const draftData = {
+                orderNumber: orderId,
+                storeName: ticketInfo?.storeName || '매장',
+                passKind: passKind || 'cash',
+                passType: passKind || 'cash',
+                productName: orderName,
+                finalAmount: finalAmount || 50000,
+                validDays: ticketInfo?.selectedTicket?.reward || '30일',
+                usageInfo: ticketInfo?.oneDayInfo || '이용정보',
+                timestamp: Date.now()
+            };
+            sessionStorage.setItem('toss:draft', JSON.stringify(draftData));
+
+            // 성공/실패 URL 설정
+            const baseUrl = window.location.origin;
             const successParams = new URLSearchParams({
                 orderNumber: orderId,
                 amount: (finalAmount || 50000).toString(),
                 storeName: ticketInfo?.storeName || '매장',
                 passType: passKind || 'cash',
-                productName: orderName
+                productName: orderName,
+                status: 'success'
             });
-            const successUrl = window.location.origin + "/complete-payment?" + successParams.toString();
-            const failUrl = window.location.origin + "/complete-payment?fail=1&orderNumber=" + encodeURIComponent(orderId);
+            const successUrl = `${baseUrl}/complete-payment?${successParams.toString()}`;
+            const failUrl = `${baseUrl}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderId)}&status=fail`;
 
-            console.log('[CheckPaymentToss] 토스페이먼츠 결제 요청 (샌드박스 방식):', {
-                orderId,
-                orderName,
-                customerName,
-                customerEmail,
-                successUrl,
-                failUrl
-            });
 
-            // 토스페이먼츠 결제 요청 (샌드박스 방식)
+            // 토스페이먼츠 결제 요청
             await widgets?.requestPayment({
                 orderId: orderId,
                 orderName: orderName,
@@ -612,13 +616,14 @@ export default function CheckPaymentToss() {
                 failUrl: failUrl
             });
 
-            console.log('[CheckPaymentToss] 토스 결제 완료 - 리다이렉션 진행 중');
         } catch (error) {
-            console.error('[CheckPaymentToss] 결제 처리 오류:', error);
-
             // 사용자 취소는 조용히 처리
             if (error?.code === 'USER_CANCEL') {
-                console.log('[CheckPaymentToss] 사용자 결제 취소');
+                return;
+            }
+
+            // 앱 연동 실패 시 조용히 처리
+            if (error?.message?.includes('intent') || error?.message?.includes('scheme')) {
                 return;
             }
 
@@ -628,7 +633,7 @@ export default function CheckPaymentToss() {
     };
 
     return (
-        <div className="container checkout-page" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
+        <div className="container checkout-page">
             {/* 상단 바 */}
             <div className="top-bar">
                 <div className="top-bar-left">
@@ -648,10 +653,56 @@ export default function CheckPaymentToss() {
                 <div className="top-bar-center">
                     <span className="top-txt font-noto">구매확인</span>
                 </div>
+                {/* <div className="top-bar-right">
+                    <button
+                        onClick={() => setShowDebugInfo(!showDebugInfo)}
+                        style={{
+                            border: '1px solid #ccc',
+                            background: '#fff',
+                            padding: '4px 8px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            borderRadius: '4px'
+                        }}
+                    >
+                        🔍
+                    </button>
+                </div> */}
             </div>
 
             {/* 본문 */}
             <div className="content-scroll">
+
+                {/* 디버깅 정보 (개발용) */}
+                {/* {showDebugInfo && (
+                    <div style={{
+                        margin: '10px',
+                        padding: '10px',
+                        backgroundColor: '#f0f0f0',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        maxHeight: '300px',
+                        overflow: 'auto'
+                    }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>🔍 CheckPaymentToss 디버깅 정보:</div>
+                        <div>SK.storeId: {SK?.storeId || 'null'}</div>
+                        <div>SK.storeID: {SK?.storeID || 'null'}</div>
+                        <div>SK.passId: {SK?.passId || 'null'}</div>
+                        <div>SK.selectedTicket: {JSON.stringify(SK?.selectedTicket) || 'null'}</div>
+                        <div>SK.accessToken: {SK?.accessToken ? '***있음***' : 'null'}</div>
+                        <div>ticketInfo.storeId: {ticketInfo?.storeId || 'null'}</div>
+                        <div>ticketInfo.selectedTicket.id: {ticketInfo?.selectedTicket?.id || 'null'}</div>
+                        <div>ticketInfo.selectedTicket.storeId: {ticketInfo?.selectedTicket?.storeId || 'null'}</div>
+                        <div>localStorage.accessToken: {(typeof localStorage !== 'undefined' && localStorage.getItem('accessToken')) ? '***있음***' : 'null'}</div>
+                        <div style={{ marginTop: '10px', fontWeight: 'bold', color: 'blue' }}>전체 window.SKYSUNNY:</div>
+                        <div style={{ fontSize: '10px', wordBreak: 'break-all' }}>{JSON.stringify(window.SKYSUNNY, null, 2)}</div>
+                        <div style={{ marginTop: '5px', fontWeight: 'bold', color: 'green' }}>전체 ticketInfo:</div>
+                        <div style={{ fontSize: '10px', wordBreak: 'break-all' }}>{JSON.stringify(ticketInfo, null, 2)}</div>
+                        <div style={{ marginTop: '5px', fontWeight: 'bold', color: 'red' }}>URL 파라미터:</div>
+                        <div style={{ fontSize: '10px' }}>{window.location.search}</div>
+                    </div>
+                )} */}
 
                 {/* 배너 */}
                 <div className="banner-container">
@@ -679,7 +730,7 @@ export default function CheckPaymentToss() {
                                 <div className="info-row"><span className="info-title">매장명</span><span className="info-text">{ticketInfo?.storeName || '-'}</span></div>
                                 <div className="info-row"><span className="info-title">이용권</span><span className="info-text">{legacyPassTypeLabel}</span></div>
                                 <div className="info-row"><span className="info-title">상품정보</span><span className="info-text">{ticketInfo?.selectedTicket?.name || '-'}</span></div>
-                                <div className="info-row"><span className="info-title">이용금액</span><span className="info-text">{ticketInfo?.selectedTicket?.price || '-'}</span></div>
+                                <div className="info-row"><span className="info-title">이용금액</span><span className="info-text">{ticketInfo?.selectedTicket?.priceText || ticketInfo?.selectedTicket?.price || '-'}</span></div>
 
                                 {/* 캐시정기권: 좌석당 할인율 표시 */}
                                 {passKind === 'cash' && (
@@ -701,23 +752,50 @@ export default function CheckPaymentToss() {
                             <span className="info-title">할인쿠폰</span>
                             <button
                                 className="coupon-btn"
-                                onClick={(e) => {
-                                    console.log('[CheckPaymentToss] 쿠폰선택 버튼 클릭됨');
-                                    e.preventDefault();
-                                    e.stopPropagation();
+                                onClick={() => {
+                                    try {
+                                        // 더 광범위한 fallback 로직
+                                        const storeId =
+                                            SK?.storeId ||
+                                            SK?.storeID ||
+                                            ticketInfo?.selectedTicket?.storeId ||
+                                            ticketInfo?.storeId ||
+                                            SK?.store?.id ||
+                                            // URL 파라미터에서 확인
+                                            (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('storeId')) ||
+                                            // 임시 기본값 (테스트용)
+                                            '5';
 
-                                    // 즉시 페이지 이동 시도
-                                    movePage('/check-coupon');
+                                        const passId =
+                                            ticketInfo?.selectedTicket?.id ||
+                                            SK?.passId ||
+                                            SK?.selectedTicket?.id ||
+                                            // URL 파라미터에서 확인
+                                            (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('passId')) ||
+                                            // 임시 기본값 (테스트용)
+                                            ticketInfo?.selectedTicket?.id ||
+                                            '1';
 
-                                    // 추가 디버깅을 위한 환경 정보 출력
-                                    console.log('[CheckPaymentToss] 현재 환경:', {
-                                        url: window.location.href,
-                                        origin: window.location.origin,
-                                        pathname: window.location.pathname,
-                                        hasReactNativeWebView: !!window.ReactNativeWebView,
-                                        hasAskRN: !!window.__askRN,
-                                        userAgent: navigator.userAgent.substring(0, 100)
-                                    });
+                                        const accessToken =
+                                            SK?.accessToken ||
+                                            (typeof localStorage !== 'undefined' && localStorage.getItem('accessToken')) ||
+                                            undefined;
+
+                                        console.log('[CheckPaymentToss] 쿠폰선택 클릭 - 전달할 데이터:', {
+                                            storeId,
+                                            passId,
+                                            accessToken: accessToken ? '***있음***' : null,
+                                            SK_raw: SK,
+                                            ticketInfo_raw: ticketInfo
+                                        });
+
+                                        navigate('/check-coupon', {
+                                            state: { storeId, passId, accessToken }
+                                        });
+                                    } catch (err) {
+                                        console.warn('[CheckPaymentToss] 쿠폰선택 이동 오류', err);
+                                        navigate('/check-coupon');
+                                    }
                                 }}
                             >
                                 쿠폰선택
@@ -794,39 +872,11 @@ export default function CheckPaymentToss() {
                         </div>
                     )}
 
-                    {/* 결제 방법 위젯 - React가 관리하지 않는 컨테이너 */}
-                    <div
-                        ref={(el) => {
-                            if (el && !el.querySelector('#payment-method')) {
-                                const paymentDiv = document.createElement('div');
-                                paymentDiv.id = 'payment-method';
-                                paymentDiv.style.cssText = `
-                  margin-bottom: 16px;
-                  min-height: 200px;
-                  width: 100%;
-                `;
-                                el.appendChild(paymentDiv);
-                            }
-                        }}
-                        style={{ marginBottom: '16px' }}
-                    />
+                    {/* 결제 방법 위젯 */}
+                    <div id="payment-method" style={{ marginBottom: '16px', minHeight: '200px', width: '100%' }}></div>
 
-                    {/* 약관 동의 위젯 - React가 관리하지 않는 컨테이너 */}
-                    <div
-                        ref={(el) => {
-                            if (el && !el.querySelector('#agreement')) {
-                                const agreementDiv = document.createElement('div');
-                                agreementDiv.id = 'agreement';
-                                agreementDiv.style.cssText = `
-                  margin-bottom: 16px;
-                  min-height: 50px;
-                  width: 100%;
-                `;
-                                el.appendChild(agreementDiv);
-                            }
-                        }}
-                        style={{ marginBottom: '16px' }}
-                    />
+                    {/* 약관 동의 위젯 */}
+                    <div id="agreement" style={{ marginBottom: '16px', minHeight: '50px', width: '100%' }}></div>
                 </div>
 
                 <div className="scroll-spacer" aria-hidden />
@@ -868,4 +918,4 @@ export default function CheckPaymentToss() {
             )}
         </div>
     );
-}
+} 
