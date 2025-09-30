@@ -147,6 +147,7 @@ const serverUrl = 'https://skysunny-api.mayoube.co.kr';
 const httpUrl = {
     qrCode: '/user/qr-code/%s',
     updateOrder: '/user/order/update',  // POST: 주문 정보 업데이트 (사용자, 좌석 등 추가 정보)
+    usableCoupons: '/user/usable/coupons', // GET: 사용 가능한 쿠폰 조회 (쿼리 파라미터 사용)
 };
 
 export {
