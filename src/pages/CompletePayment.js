@@ -41,17 +41,22 @@ const getDisplayFields = () => {
     ];
 };
 
-// URL에서 orderNumber 추출
-const getOrderNumberFromQuery = () => {
-    if (typeof window === 'undefined') return null;
+// URL에서 orderNumber 및 aggregateId 추출
+const getParamsFromQuery = () => {
+    if (typeof window === 'undefined') return { orderNumber: null, aggregateId: null };
     const q = new URLSearchParams(window.location.search);
 
     // 토스 결제 성공 후 리다이렉트에서 오는 파라미터들을 확인
-    // orderId (토스 표준), orderNumber (커스텀), paymentKey, amount 등
     const orderNumber = q.get('orderNumber') || q.get('orderId') || q.get('order_id') || q.get('paymentKey');
+    const aggregateId = q.get('aggregateId') || q.get('id');
 
+    console.log('[CompletePayment] URL 파라미터 추출:', {
+        orderNumber,
+        aggregateId,
+        allParams: Object.fromEntries(q.entries())
+    });
 
-    return orderNumber;
+    return { orderNumber, aggregateId };
 };
 
 export default function CompletePayment() {
@@ -60,11 +65,14 @@ export default function CompletePayment() {
     const [loading, setLoading] = useState(true);
     const [errMsg, setErrMsg] = useState('');
 
-    // 1) orderNumber 결정 (URL 우선, 없으면 sessionStorage에서 시도)
+    // 1) orderNumber 및 aggregateId 결정 (URL 우선, 없으면 sessionStorage에서 시도)
+    const { orderNumber: urlOrderNumber, aggregateId: urlAggregateId } = useMemo(() => {
+        return getParamsFromQuery();
+    }, []);
+
     const orderNumber = useMemo(() => {
-        const fromQuery = getOrderNumberFromQuery();
-        if (fromQuery) {
-            return fromQuery;
+        if (urlOrderNumber) {
+            return urlOrderNumber;
         }
 
         // sessionStorage에서 toss:draft 확인
@@ -79,7 +87,7 @@ export default function CompletePayment() {
         }
 
         return null;
-    }, []);
+    }, [urlOrderNumber]);
 
     // ✅ iOS 스와이프 뒤로가기 제스처 차단
     useEffect(() => {
@@ -114,10 +122,62 @@ export default function CompletePayment() {
 
             // 1단계: URL 파라미터에서 기본 결제 정보 추출
             const urlParams = new URLSearchParams(window.location.search);
+
+            console.log('[CompletePayment] 🔍 URL 전체 파라미터:', {
+                url: window.location.href,
+                allParams: Object.fromEntries(urlParams.entries())
+            });
+
+            // 토스페이먼츠가 리다이렉트할 때 전달하는 파라미터들
+            const orderId = urlParams.get('orderId'); // 토스가 돌려준 랜덤 문자열
+            const paymentKey = urlParams.get('paymentKey');
+            const amount = urlParams.get('amount') ? Number(urlParams.get('amount')) : null;
+
+            // sessionStorage에서 DB orderId (SK 서버 PK) 가져오기
+            let orderIdSk = sessionStorage.getItem('dbOrderId');
+
+            // tossOrderIdMapping에서도 확인 (fallback)
+            const mappingStr = sessionStorage.getItem('tossOrderIdMapping');
+            let mapping = null;
+            if (mappingStr) {
+                try {
+                    mapping = JSON.parse(mappingStr);
+                } catch (e) {
+                    console.warn('[CompletePayment] tossOrderIdMapping 파싱 실패:', e);
+                }
+            }
+
+            console.log('[CompletePayment] 🔍 토스에서 받은 원본 데이터:', {
+                '토스가 돌려준 orderId': orderId,
+                'paymentKey': paymentKey,
+                'amount': amount,
+                'orderNumber (우리가 관리)': orderNumber,
+                'orderIdSk (sessionStorage)': orderIdSk,
+                'tossOrderIdMapping': mapping,
+                '⚠️ orderIdSk 상태': orderIdSk ? '✅ 있음' : '❌ 없음 (문제!)',
+                '설명': {
+                    'orderId': '토스가 리다이렉트할 때 전달 (랜덤 문자열)',
+                    'orderIdSk': 'SK 서버 orders 테이블 PK',
+                    'orderNumber': '사용자용 주문번호'
+                }
+            });
+
+            // ⚠️ orderIdSk가 없으면 경고
+            if (!orderIdSk) {
+                console.error('[CompletePayment] ❌ CRITICAL: orderIdSk가 sessionStorage에 없습니다!');
+                console.error('[CompletePayment] sessionStorage 전체 내용:', {
+                    dbOrderId: sessionStorage.getItem('dbOrderId'),
+                    'toss:draft': sessionStorage.getItem('toss:draft'),
+                    tossOrderIdMapping: sessionStorage.getItem('tossOrderIdMapping')
+                });
+            }
+
             const urlPaymentData = {
                 orderNumber: orderNumber,
-                paymentAmount: urlParams.get('amount') ? Number(urlParams.get('amount')) : null,
-                paymentKey: urlParams.get('paymentKey'),
+                paymentAmount: amount,
+                paymentKey: paymentKey,
+                orderId: orderId,         // 토스가 돌려준 랜덤 문자열
+                orderIdSk: orderIdSk,     // SK 서버 orders 테이블 PK
                 // 토스 결제 성공 시 기본 정보
                 storeName: urlParams.get('storeName') || '매장',
                 passType: urlParams.get('passType') || 'cash',
@@ -126,6 +186,54 @@ export default function CompletePayment() {
                 couponAmount: 0
             };
 
+            console.log('[CompletePayment] 🔍 최종 urlPaymentData:', {
+                ...urlPaymentData,
+                '명확한 구분': {
+                    'orderId': orderId + ' (토스가 돌려준 랜덤 문자열)',
+                    'orderIdSk': orderIdSk + ' (SK 서버 PK)',
+                    'orderNumber': orderNumber + ' (사용자용)'
+                }
+            });
+
+            // 결제 승인 직후 RN에 구매 요청 전달 (paymentKey가 있을 때만)
+            if (urlPaymentData.paymentKey) {
+                try {
+                    const paymentData = {
+                        paymentKey: urlPaymentData.paymentKey,
+                        orderId: urlPaymentData.orderId,              // 토스가 돌려준 랜덤 문자열
+                        orderIdSk: urlPaymentData.orderIdSk || null,  // SK 서버 orders 테이블 PK
+                        amount: urlPaymentData.paymentAmount || 0,
+                    };
+
+                    console.log('[CompletePayment] 🔍 RN으로 전달할 최종 데이터:', {
+                        orderNumber,
+                        paymentData,
+                        '검증': {
+                            'paymentKey 존재': !!paymentData.paymentKey,
+                            'orderId 존재': !!paymentData.orderId,
+                            'orderIdSk 존재': !!paymentData.orderIdSk,
+                            'orderIdSk 값': paymentData.orderIdSk
+                        },
+                        '명확한 구분': {
+                            'orderNumber': orderNumber + ' (사용자용 주문번호)',
+                            'paymentData.orderId': paymentData.orderId + ' (토스 랜덤 ID)',
+                            'paymentData.orderIdSk': (paymentData.orderIdSk || '❌없음') + ' (SK 서버 PK)',
+                            'paymentKey': '토스에서 발급한 결제 키'
+                        }
+                    });
+
+                    if (!paymentData.orderIdSk) {
+                        console.error('[CompletePayment] ⚠️ WARNING: orderIdSk (SK 서버 PK)가 없습니다! 서버 에러 발생 가능');
+                    }
+
+                    if (typeof window.requestPayment === 'function') {
+                        await window.requestPayment(orderNumber, paymentData);
+                    }
+                } catch (e) {
+                    console.error('[CompletePayment] REQUEST_PAYMENT 호출 실패:', e);
+                    // 실패하더라도 화면 표시는 계속 진행
+                }
+            }
 
             // 2단계: sessionStorage에서 추가 정보 확인
             let sessionData = {};
@@ -160,13 +268,18 @@ export default function CompletePayment() {
             };
 
 
-            // 4단계: 기본 데이터가 충분하면 바로 표시, 아니면 RN에서 추가 데이터 요청
-            if (basicPaymentData.paymentAmount && basicPaymentData.paymentAmount > 0) {
+            console.log('[CompletePayment] 병합된 결제 데이터:', basicPaymentData);
+
+            // 4단계: 기본 데이터가 충분하면 바로 표시
+            if (basicPaymentData.orderNumber) {
                 const dataWithAggregateId = {
                     ...basicPaymentData,
                     // aggregateId가 없으면 orderNumber를 사용
-                    aggregateId: basicPaymentData?.aggregateId || basicPaymentData?.id || orderNumber
+                    aggregateId: basicPaymentData?.aggregateId || basicPaymentData?.id || orderNumber,
+                    // 결제 금액이 없으면 기본값 설정
+                    paymentAmount: basicPaymentData.paymentAmount || 50000
                 };
+                console.log('[CompletePayment] 최종 데이터 설정:', dataWithAggregateId);
                 setData(dataWithAggregateId);
                 setLoading(false);
                 return;
@@ -232,9 +345,17 @@ export default function CompletePayment() {
             console.warn('[CompletePayment] 결제 데이터가 없어서 QR 페이지로 이동할 수 없습니다.');
             return;
         }
-        // aggregateId 결정 로직 개선
+        // aggregateId 결정 로직 개선 (URL 파라미터 우선)
         const finalOrderNumber = data.orderNumber || orderNumber;
-        const finalAggregateId = data.aggregateId || data.id || finalOrderNumber;
+        const finalAggregateId = urlAggregateId || data.aggregateId || data.id || finalOrderNumber;
+
+        console.log('[CompletePayment:goQr] aggregateId 결정:', {
+            urlAggregateId,
+            dataAggregateId: data.aggregateId,
+            dataId: data.id,
+            finalOrderNumber,
+            finalAggregateId
+        });
 
 
         // QR 페이지에서 사용할 데이터를 미리 준비

@@ -72,30 +72,11 @@ const TossPayment = () => {
 
         // (A 방식) order를 먼저 만든다
         const order = {
-            id: SK?.order?.id || q.orderId || `order-${Date.now()}`,
-            name: SK?.order?.name || q.name || "상품",
-            amount: parseAmount(SK?.order?.amount ?? q.amount ?? 0),
-            customerName: SK?.order?.customerName ||
-                q.customerName ||
-                SK?.userName ||
-                SK?.userInfo?.name ||
-                SK?.customerName ||
-                (typeof localStorage !== "undefined" && localStorage.getItem('userName')) ||
-                "고객",
-            customerEmail: SK?.order?.customerEmail ||
-                q.customerEmail ||
-                SK?.userEmail ||
-                SK?.userInfo?.email ||
-                SK?.customerEmail ||
-                (typeof localStorage !== "undefined" && localStorage.getItem('userEmail')) ||
-                "test@example.com",
-            customerMobilePhone: SK?.order?.customerMobilePhone ||
-                q.customerMobilePhone ||
-                SK?.userPhone ||
-                SK?.userInfo?.phone ||
-                SK?.customerPhone ||
-                (typeof localStorage !== "undefined" && localStorage.getItem('userPhone')) ||
-                undefined,
+            id: SK?.order?.id || q.orderId || generateOrderId(),
+            name: SK?.order?.name || q.orderName || "스카이써니 이용권",
+            amount: parseAmount(SK?.order?.amount ?? q.amount ?? finalAmount ?? 50000),
+            customerName: SK?.customerName || q.customerName || "고객",
+            customerEmail: SK?.customerEmail || q.customerEmail || "test@example.com",
         };
 
         // 키/고객 식별자
@@ -130,6 +111,12 @@ const TossPayment = () => {
             SK?.failUrl || q.failUrl || `${window.location.origin}/complete-payment?fail=1&orderNumber=${encodeURIComponent(order.id)}`,
             "/complete-payment?fail=1"
         );
+
+        console.log('[TOSS:init:urls]', {
+            successUrl,
+            failUrl,
+            clientKeyMasked: mask(clientKey)
+        });
 
         return { order, clientKey, customerKey, successUrl, failUrl };
     }, []);

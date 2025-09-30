@@ -478,13 +478,13 @@ export default function CheckPaymentToss() {
         }
 
         try {
-            // 실제 주문번호 가져오기
+            // 실제 주문번호 가져오기 (orderNumber: 사용자용 주문번호)
             console.log('🔵 [onClickBuy] getActualOrderNumber 호출 시작');
-            let orderId = getActualOrderNumber();
-            console.log('🔵 [onClickBuy] getActualOrderNumber 결과:', orderId);
+            let orderNumber = getActualOrderNumber();
+            console.log('🔵 [onClickBuy] getActualOrderNumber 결과:', orderNumber);
 
             // 주문번호가 없으면 RN에 임시 주문 생성 요청
-            if (!orderId) {
+            if (!orderNumber) {
                 console.log('🟡 [onClickBuy] 주문번호가 없음 - RN에 임시 주문 생성 요청 시작');
 
                 // RN에 임시 주문 생성 요청 (window.__askRN 사용)
@@ -550,12 +550,28 @@ export default function CheckPaymentToss() {
                         console.log('🟢 [onClickBuy] Promise 완료 - draftResult:', draftResult);
 
                         if (draftResult?.orderNumber) {
-                            orderId = draftResult.orderNumber;
-                            console.log('🟢 [onClickBuy] RN으로부터 주문번호 받음:', orderId);
+                            orderNumber = draftResult.orderNumber;
+                            const dbOrderId = draftResult.data?.order?.id || draftResult.data?.orderId;
+
+                            console.log('🟢 [onClickBuy] RN 응답 데이터:', {
+                                orderNumber,
+                                dbOrderId,
+                                '설명': {
+                                    'orderNumber': '토스에 전달할 주문번호',
+                                    'dbOrderId': 'DB orders 테이블 PK'
+                                }
+                            });
+
+                            // sessionStorage에 DB orderId 저장 (CompletePayment에서 사용)
+                            if (dbOrderId) {
+                                sessionStorage.setItem('dbOrderId', String(dbOrderId));
+                                console.log('🟢 [onClickBuy] sessionStorage에 dbOrderId 저장:', dbOrderId);
+                            }
 
                             // window.SKYSUNNY에 저장
                             if (window.SKYSUNNY) {
-                                window.SKYSUNNY.orderNumber = orderId;
+                                window.SKYSUNNY.orderNumber = orderNumber;
+                                window.SKYSUNNY.orderId = dbOrderId;
                                 if (draftResult.data?.order) {
                                     window.SKYSUNNY.order = draftResult.data.order;
                                 }
@@ -588,12 +604,12 @@ export default function CheckPaymentToss() {
                 }
 
                 // 여전히 주문번호가 없으면 에러 처리
-                if (!orderId) {
+                if (!orderNumber) {
                     return;
                 }
             }
 
-            console.log('[onClickBuy] 결제 진행 - orderNumber:', orderId);
+            console.log('[onClickBuy] 결제 진행 - orderNumber:', orderNumber);
 
             const orderName = ticketInfo?.selectedTicket?.name || "스카이써니 이용권";
             const customerName = SK?.customerName || ticketInfo?.customerName || "고객";
@@ -601,7 +617,7 @@ export default function CheckPaymentToss() {
 
             // sessionStorage에 주문 정보 저장
             const draftData = {
-                orderNumber: orderId,
+                orderNumber: orderNumber,
                 storeName: ticketInfo?.storeName || '매장',
                 passKind: passKind || 'cash',
                 passType: passKind || 'cash',
@@ -616,7 +632,7 @@ export default function CheckPaymentToss() {
             // 성공/실패 URL 설정
             const baseUrl = window.location.origin;
             const successParams = new URLSearchParams({
-                orderNumber: orderId,
+                orderNumber: orderNumber,
                 amount: (finalAmount || 50000).toString(),
                 storeName: ticketInfo?.storeName || '매장',
                 passType: passKind || 'cash',
@@ -624,12 +640,31 @@ export default function CheckPaymentToss() {
                 status: 'success'
             });
             const successUrl = `${baseUrl}/complete-payment?${successParams.toString()}`;
-            const failUrl = `${baseUrl}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderId)}&status=fail`;
+            const failUrl = `${baseUrl}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderNumber)}&status=fail`;
 
+            // 토스페이먼츠에 전달할 랜덤 주문 ID 생성
+            const tossOrderId = generateRandomString();
+
+            console.log('[onClickBuy] 🔍 토스 결제 데이터:', {
+                tossOrderId,
+                orderNumber,
+                dbOrderId: sessionStorage.getItem('dbOrderId'),
+                '설명': {
+                    'tossOrderId': '토스에 전달하는 랜덤 ID (예: MC4yOTUxMDk0ODgzNzcy)',
+                    'orderNumber': '사용자용 주문번호 (예: 20251001000033)',
+                    'dbOrderId': 'DB orders 테이블 PK (예: 166)'
+                }
+            });
+
+            // sessionStorage에 매핑 정보 저장 (CompletePayment에서 사용)
+            sessionStorage.setItem('tossOrderIdMapping', JSON.stringify({
+                tossOrderId: tossOrderId,
+                orderNumber: orderNumber
+            }));
 
             // 토스페이먼츠 결제 요청
             await widgets?.requestPayment({
-                orderId: orderId,
+                orderId: tossOrderId,  // 랜덤 문자열 전달
                 orderName: orderName,
                 customerName: customerName,
                 customerEmail: customerEmail,

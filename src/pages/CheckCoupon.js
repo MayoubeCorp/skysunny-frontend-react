@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { httpGet, httpUrl } from '../api/httpClient';
 import backArrow from '../img/common/backarrow.png';
 import redClock from '../img/mypage/redclock.png';
 import '../styles/main.scss';
@@ -7,12 +8,10 @@ import '../styles/main.scss';
 // ✅ 필요한 값: storeId, passId(=selectedTicket.id), (선택) accessToken
 // RN에서 window.SKYSUNNY = { storeId, selectedTicket: { id: passId }, accessToken? } 형태로 주입된다고 가정
 
-const API_BASE = 'https://skysunny-api.mayoube.co.kr';
-const buildAvailableUrl = (storeId, passId) =>
-    `${API_BASE}/user/usable/coupons?storeId=${encodeURIComponent(storeId)}&passId=${encodeURIComponent(passId)}`;
-
 export default function CheckCoupon() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const backButtonRef = useRef(null);
 
     const [ctx, setCtx] = useState(() => {
         // 초기 진입 시 이미 주입되어 있으면 바로 사용
@@ -21,6 +20,7 @@ export default function CheckCoupon() {
 
     const [loading, setLoading] = useState(false);
     const [couponData, setCouponData] = useState([]);
+    const [debugInfo, setDebugInfo] = useState(null);
 
     // ✅ RN이 늦게 주입해도 받도록 이벤트 구독 (SelectSeat/CheckPaymentWeb에서 CustomEvent 발행)
     useEffect(() => {
@@ -31,11 +31,19 @@ export default function CheckCoupon() {
         return () => document.removeEventListener('skysunny:init', handler);
     }, []);
 
-    // ✅ iOS 스와이프 뒤로가기 제스처 차단
+    // ✅ iOS 스와이프 뒤로가기 제스처 차단 (단, 상단 뒤로가기 버튼 영역은 허용)
     useEffect(() => {
         const preventSwipeBack = (e) => {
-            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (결제 페이지 보호)
-            if (e.touches && e.touches[0] && e.touches[0].clientX < 30) {
+            const touch = e.touches && e.touches[0];
+            if (!touch) return;
+
+            // 뒤로가기 버튼 내부에서 시작된 터치는 허용
+            const target = e.target;
+            const isInsideBackButton = !!(target && target.closest && target.closest('.top-bar-left'));
+            if (isInsideBackButton) return;
+
+            // 화면 왼쪽 30px 이내에서 시작하는 터치 차단 (스와이프 뒤로가기 방지)
+            if (touch.clientX < 30) {
                 e.preventDefault();
                 e.stopPropagation();
             }
@@ -50,17 +58,55 @@ export default function CheckCoupon() {
         };
     }, []);
 
-    // ✅ storeId/passId 계산 (selectedTicket.id 우선)
-    const storeId = useMemo(() => ctx?.storeId ?? ctx?.storeID ?? null, [ctx]);
-    const passId = useMemo(
-        () => ctx?.passId ?? ctx?.selectedTicket?.id ?? ctx?.selectedTicket?.passId ?? null,
-        [ctx]
+    // ✅ storeId/passId 계산 (라우트 state > window.SKYSUNNY)
+    const routeStoreId = location.state?.storeId ?? null;
+    const routePassId = location.state?.passId ?? null;
+    const routeAccessToken = location.state?.accessToken;
+
+    const storeId = useMemo(
+        () => routeStoreId ?? ctx?.storeId ?? ctx?.storeID ?? null,
+        [routeStoreId, ctx]
     );
+    const passId = useMemo(
+        () => routePassId ?? ctx?.passId ?? ctx?.selectedTicket?.id ?? ctx?.selectedTicket?.passId ?? null,
+        [routePassId, ctx]
+    );
+
+    // 디버깅 로그 추가
+    useEffect(() => {
+        const debugData = {
+            routeState: location.state,
+            routeStoreId,
+            routePassId,
+            routeAccessToken: routeAccessToken ? '***있음***' : null,
+            windowSKYSUNNY: ctx,
+            ctxStoreId: ctx?.storeId,
+            ctxStoreID: ctx?.storeID,
+            ctxPassId: ctx?.passId,
+            ctxSelectedTicket: ctx?.selectedTicket,
+            ctxAccessToken: ctx?.accessToken ? '***있음***' : null,
+            finalStoreId: storeId,
+            finalPassId: passId
+        };
+        console.log('[CheckCoupon] 디버깅 정보:', debugData);
+        setDebugInfo(debugData);
+    }, [location.state, routeStoreId, routePassId, routeAccessToken, ctx, storeId, passId]);
 
     // ✅ 사용 가능 쿠폰 조회
     useEffect(() => {
         const fetchAvailableCoupons = async () => {
+            console.log('[CheckCoupon] fetchAvailableCoupons 시작:', {
+                storeId,
+                passId,
+                hasStoreId: !!storeId,
+                hasPassId: !!passId
+            });
+
             if (!storeId || !passId) {
+                console.warn('[CheckCoupon] storeId 또는 passId가 없어서 쿠폰 조회를 건너뜁니다:', {
+                    storeId,
+                    passId
+                });
                 // 파라미터가 아직 없으면 대기
                 return;
             }
@@ -68,25 +114,49 @@ export default function CheckCoupon() {
             try {
                 setLoading(true);
 
-                const url = buildAvailableUrl(storeId, passId);
-
-                const headers = {
-                    'Content-Type': 'application/json',
+                // httpClient의 httpGet 사용 (쿼리 파라미터로 storeId, passId 전달)
+                const queryParams = {
+                    storeId: storeId,
+                    passId: passId
                 };
-                // RN이 accessToken을 주입해줬으면 Authorization 사용
-                if (ctx?.accessToken) {
-                    headers['Authorization'] = `Bearer ${ctx.accessToken}`;
-                }
 
-                const res = await fetch(url, { headers, method: 'GET' });
-                const json = await res.json();
+                console.log('[available coupons] httpGet 호출 시작:', {
+                    storeId,
+                    passId,
+                    url: httpUrl.usableCoupons,
+                    queryParams
+                });
+
+                const json = await httpGet(httpUrl.usableCoupons, null, queryParams);
 
                 // 디버그 로그
-                console.log('[available coupons][url]', url);
-                console.log('[available coupons][raw]', json);
+                console.log('[available coupons][httpGet response]', json);
+                console.log('[available coupons][result array length]', json?.result?.length || 0);
+                console.log('[available coupons][response code]', json?.code);
 
                 // 서버 응답 형태 가정: { code: 100, result: [...] }
                 const list = Array.isArray(json?.result) ? json.result : [];
+
+                // 빈 배열인 경우 추가 로그
+                if (list.length === 0) {
+                    console.warn('[available coupons] 사용 가능한 쿠폰이 없습니다:', {
+                        storeId,
+                        passId,
+                        serverResponse: json
+                    });
+
+                    // 개발/테스트용: 더미 데이터 표시 (실제 운영에서는 제거)
+                    // const dummyCoupons = [{
+                    //     id: 'dummy1',
+                    //     name: '테스트 쿠폰',
+                    //     expireDays: 30,
+                    //     discountAmount: '5,000원',
+                    //     minOrderPrice: '1만원 이상',
+                    //     statusText: '이용가능',
+                    //     storeName: '테스트 매장'
+                    // }];
+                    // list.push(...dummyCoupons);
+                }
 
                 // ✅ UI에서 쓰는 필드로 안전 매핑
                 // 서버 필드 예시(쿠폰함과 유사): id, name, expireDays, discountAmount, minOrderPrice, statusText, storeName
@@ -113,7 +183,7 @@ export default function CheckCoupon() {
         };
 
         fetchAvailableCoupons();
-    }, [storeId, passId, ctx?.accessToken]); // 토큰 갱신도 대비
+    }, [storeId, passId, ctx?.accessToken, routeAccessToken]); // 토큰 갱신도 대비
 
     // ✅ available API는 이미 "이용가능"만 내려올 확률이 크지만, 방어적으로 한 번 더 필터
     const filteredCoupons = useMemo(
@@ -137,6 +207,7 @@ export default function CheckCoupon() {
                     <span className="top-txt font-noto">쿠폰선택</span>
                 </div>
             </div>
+
 
             {/* 쿠폰 리스트 */}
             <div className="coupon-list" style={{ minHeight: 'calc(100vh - 60px)' }}>
