@@ -208,6 +208,7 @@ export default function CompletePayment() {
                     console.log('[CompletePayment] 🔍 RN으로 전달할 최종 데이터:', {
                         orderNumber,
                         paymentData,
+                        'window.requestPayment 존재': typeof window.requestPayment,
                         '검증': {
                             'paymentKey 존재': !!paymentData.paymentKey,
                             'orderId 존재': !!paymentData.orderId,
@@ -226,8 +227,15 @@ export default function CompletePayment() {
                         console.error('[CompletePayment] ⚠️ WARNING: orderIdSk (SK 서버 PK)가 없습니다! 서버 에러 발생 가능');
                     }
 
+                    // ✅ window.requestPayment 함수 존재 확인
                     if (typeof window.requestPayment === 'function') {
+                        console.log('[CompletePayment] ✅ window.requestPayment 함수 호출 시작');
+                        console.log('[CompletePayment] 📤 전달 파라미터:', { orderNumber, paymentData });
                         await window.requestPayment(orderNumber, paymentData);
+                        console.log('[CompletePayment] ✅ window.requestPayment 함수 호출 완료');
+                    } else {
+                        console.error('[CompletePayment] ❌ window.requestPayment 함수가 정의되지 않았습니다!');
+                        console.error('[CompletePayment] window 객체 확인:', Object.keys(window).filter(k => k.includes('request') || k.includes('payment')));
                     }
                 } catch (e) {
                     console.error('[CompletePayment] REQUEST_PAYMENT 호출 실패:', e);
