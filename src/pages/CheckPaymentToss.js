@@ -25,6 +25,9 @@ export default function CheckPaymentToss() {
     const [showCopyNotification, setShowCopyNotification] = useState(false);
     const [showDebugInfo, setShowDebugInfo] = useState(false);
 
+    // SK 먼저 정의 (다른 useMemo에서 사용하므로)
+    const SK = useMemo(() => window?.SKYSUNNY || {}, []);
+
     // 배너 데이터 (BannerSlider 컴포넌트 형식에 맞춤)
     const bannerImages2 = useMemo(() => {
         // RN에서 전달된 배너가 있으면 사용
@@ -34,9 +37,7 @@ export default function CheckPaymentToss() {
         }
         // 배너가 없으면 빈 배열 반환 (BannerSlider가 자체적으로 null 처리)
         return [];
-    }, [window?.SKYSUNNY?.banners]);
-
-    const SK = useMemo(() => window?.SKYSUNNY || {}, []);
+    }, [SK]);
 
     const movePage = (path) => navigate(path);
 
