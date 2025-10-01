@@ -642,15 +642,15 @@ export default function CheckPaymentToss() {
             const successUrl = `${baseUrl}/complete-payment?${successParams.toString()}`;
             const failUrl = `${baseUrl}/complete-payment?fail=1&orderNumber=${encodeURIComponent(orderNumber)}&status=fail`;
 
-            // 토스페이먼츠에 전달할 랜덤 주문 ID 생성
-            const tossOrderId = generateRandomString();
+            // 토스페이먼츠에 전달할 랜덤 주문 ID 생성 (임시 주석처리)
+            // const tossOrderId = generateRandomString();
 
             console.log('[onClickBuy] 🔍 토스 결제 데이터:', {
-                tossOrderId,
+                // tossOrderId,
                 orderNumber,
                 dbOrderId: sessionStorage.getItem('dbOrderId'),
                 '설명': {
-                    'tossOrderId': '토스에 전달하는 랜덤 ID (예: MC4yOTUxMDk0ODgzNzcy)',
+                    // 'tossOrderId': '토스에 전달하는 랜덤 ID (예: MC4yOTUxMDk0ODgzNzcy)',
                     'orderNumber': '사용자용 주문번호 (예: 20251001000033)',
                     'dbOrderId': 'DB orders 테이블 PK (예: 166)'
                 }
@@ -658,13 +658,13 @@ export default function CheckPaymentToss() {
 
             // sessionStorage에 매핑 정보 저장 (CompletePayment에서 사용)
             sessionStorage.setItem('tossOrderIdMapping', JSON.stringify({
-                tossOrderId: tossOrderId,
+                // tossOrderId: tossOrderId,
                 orderNumber: orderNumber
             }));
 
             // 토스페이먼츠 결제 요청
             await widgets?.requestPayment({
-                orderId: tossOrderId,  // 랜덤 문자열 전달
+                orderId: orderNumber,  // 우리 orderNumber 사용
                 orderName: orderName,
                 customerName: customerName,
                 customerEmail: customerEmail,
