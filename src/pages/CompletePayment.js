@@ -195,9 +195,17 @@ export default function CompletePayment() {
                 }
             });
 
-            // 결제 승인 직후 RN에 구매 요청 전달 (paymentKey가 있을 때만)
-            if (urlPaymentData.paymentKey) {
+            // ✅ 중복 결제 요청 방지: sessionStorage에 처리 완료 플래그 확인
+            const processedKey = `payment_processed_${orderNumber}`;
+            const alreadyProcessed = sessionStorage.getItem(processedKey);
+
+            // 결제 승인 직후 RN에 구매 요청 전달 (paymentKey가 있고 아직 처리하지 않은 경우에만)
+            if (urlPaymentData.paymentKey && !alreadyProcessed) {
                 try {
+                    // 처리 시작 표시
+                    sessionStorage.setItem(processedKey, 'processing');
+                    console.log('[CompletePayment] 🔒 결제 처리 시작 - 중복 방지 플래그 설정:', orderNumber);
+
                     const paymentData = {
                         paymentKey: urlPaymentData.paymentKey,
                         orderId: urlPaymentData.orderId,              // 토스가 돌려준 랜덤 문자열
@@ -233,14 +241,27 @@ export default function CompletePayment() {
                         console.log('[CompletePayment] 📤 전달 파라미터:', { orderNumber, paymentData });
                         await window.requestPayment(orderNumber, paymentData);
                         console.log('[CompletePayment] ✅ window.requestPayment 함수 호출 완료');
+
+                        // 처리 완료 표시
+                        sessionStorage.setItem(processedKey, 'completed');
+                        console.log('[CompletePayment] 🔒 결제 처리 완료 - 플래그 업데이트:', orderNumber);
                     } else {
                         console.error('[CompletePayment] ❌ window.requestPayment 함수가 정의되지 않았습니다!');
                         console.error('[CompletePayment] window 객체 확인:', Object.keys(window).filter(k => k.includes('request') || k.includes('payment')));
+                        // 실패 시 플래그 제거 (재시도 가능하도록)
+                        sessionStorage.removeItem(processedKey);
                     }
                 } catch (e) {
                     console.error('[CompletePayment] REQUEST_PAYMENT 호출 실패:', e);
+                    // 실패 시 플래그 제거 (재시도 가능하도록)
+                    sessionStorage.removeItem(processedKey);
                     // 실패하더라도 화면 표시는 계속 진행
                 }
+            } else if (alreadyProcessed) {
+                console.log('[CompletePayment] ⏭️ 이미 처리된 결제 - 스킵:', {
+                    orderNumber,
+                    processedStatus: alreadyProcessed
+                });
             }
 
             // 2단계: sessionStorage에서 추가 정보 확인
@@ -373,7 +394,7 @@ export default function CompletePayment() {
                 usageSeat: data.seatName || data.seatNumber || null,
                 wifiId: data.wifiId || window.SKYSUNNY?.wifiSsid || null,
                 wifiPassword: data.wifiPassword || window.SKYSUNNY?.wifiPassword || null,
-                entrancePassword: data.entrancePassword || window.SKYSUNNY?.entrancePassword || null,
+                entryPassword: data.entryPassword || data.entrancePassword || window.SKYSUNNY?.entryPassword || window.SKYSUNNY?.entrancePassword || null,
                 imageUrl: null // QR 이미지는 API에서 받아와야 함
             },
             orderDetails: {
