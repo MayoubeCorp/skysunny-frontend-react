@@ -637,64 +637,7 @@ export default function QrCode({ navigate }) {
 
     const qrImgSrc = qrData?.imageUrl || qrIcon;
 
-    // 에러 상태 UI
-    if (err) {
-        return (
-            <div className="qr-container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
-                {/* 상단 영역 */}
-                <div className="qr-header">
-                    <div className="qr-header-inner">
-                        <p className="qr-header-text">
-                            <b>QR코드 로드 실패</b>
-                        </p>
-                    </div>
-                </div>
-
-                {/* 에러 메시지 박스 */}
-                <div className="qr-box-wrapper">
-                    <div className="menu-box" style={{
-                        padding: '40px 20px',
-                        textAlign: 'center',
-                        backgroundColor: '#fff5f5',
-                        border: '1px solid #ff6b6b',
-                        borderRadius: '12px'
-                    }}>
-                        <div style={{
-                            fontSize: '48px',
-                            marginBottom: '20px',
-                            color: '#ff6b6b'
-                        }}>⚠️</div>
-                        <div style={{
-                            fontSize: '16px',
-                            fontWeight: 'bold',
-                            marginBottom: '12px',
-                            color: '#ff6b6b'
-                        }}>
-                            {err}
-                        </div>
-                        <div style={{
-                            fontSize: '14px',
-                            color: '#666',
-                            lineHeight: '1.4'
-                        }}>
-                            잠시 후 자동으로 홈 화면으로 이동합니다.
-                            <br />
-                            문제가 지속되면 고객센터에 문의해주세요.
-                        </div>
-                    </div>
-                </div>
-
-                {/* 하단 버튼 */}
-                <div className="bottom-bar">
-                    <button className="bottom-btn" onClick={goHomeTab}>
-                        홈으로 돌아가기
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    // ====== ⬇⬇⬇ 정상 상태 UI (원본 그대로) ⬇⬇⬇ ======
+    // ====== 정상 상태 UI ======
     return (
         <div className="qr-container" style={{ overscrollBehaviorX: 'none', touchAction: 'pan-y' }}>
             {/* 상단 영역 */}
