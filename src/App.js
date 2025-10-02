@@ -3,6 +3,7 @@ import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-d
 import CheckCoupon from './pages/CheckCoupon';
 import CheckPaymentToss from './pages/CheckPaymentToss';
 import CompletePayment from './pages/CompletePayment';
+import ParentLogin from './pages/ParentLogin';
 import QrCode from './pages/QrCode';
 import { initWebViewBridge } from './utils/webviewBridge';
 
@@ -20,7 +21,7 @@ function App() {
         <Route path="/complete-payment" element={<CompletePayment />} />
         <Route path="/check-coupon" element={<CheckCoupon />} />
         <Route path="/qr-code" element={<QrCode />} />
-        {/* <Route path="/toss-payment" element={<TossPayment />} /> */}
+        <Route path="/parent-login" element={<ParentLogin />} />
       </Routes>
     </Router>
   );
