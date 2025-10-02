@@ -887,7 +887,7 @@ export default function CheckPaymentToss() {
                     <p className="note-text font-bm">PC, 대리인 결제도 가능해요!</p>
                     <div className="copy-url-box" onClick={async () => {
                         try {
-                            await navigator.clipboard.writeText('http://skasca.me/cash');
+                            await navigator.clipboard.writeText('https://app.skysunny.mayoube.co.kr/cash');
                             setShowCopyNotification(true);
                             setTimeout(() => setShowCopyNotification(false), 3000);
                         } catch (err) {
