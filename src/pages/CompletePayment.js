@@ -349,9 +349,9 @@ export default function CompletePayment() {
     // 3) 홈 탭으로 이동 (RN 브리지 → 웹 폴백)
     const goHome = () => {
         try {
-            const payload = { action: 'GO_HOME', tab: '홈' };
+            const payload = { action: 'GO_HOME_TAB', payload: {} };
             if (typeof window !== 'undefined' && typeof window.__askRN === 'function') {
-                window.__askRN(payload.action, { tab: payload.tab });
+                window.__askRN(payload.action, payload.payload);
                 return;
             }
             if (typeof window !== 'undefined' &&
