@@ -1,4 +1,5 @@
 import Axios from 'axios';
+import config from '../config/config.js';
 
 // util.format 대체 함수 (브라우저 환경용)
 const formatString = (str, ...params) => {
@@ -10,7 +11,7 @@ const formatString = (str, ...params) => {
 };
 
 const makeUrl = (url, params) => {
-    let result = "https://skysunny-api.mayoube.co.kr" + url;
+    let result = config.API_BASE_URL + url;
     if (params != null) {
         result = formatString(result, ...params);
     }
@@ -139,10 +140,10 @@ const httpPut = async (url, params, data, hideLoading) => {
 };
 
 const imageUrl = (idx) => {
-    return `https://skysunny-api.mayoube.co.kr/file/${idx}`;
+    return `${config.API_BASE_URL}/file/${idx}`;
 };
 
-const serverUrl = 'https://skysunny-api.mayoube.co.kr';
+const serverUrl = config.API_BASE_URL;
 
 const httpUrl = {
     qrCode: '/user/qr-code/%s',
