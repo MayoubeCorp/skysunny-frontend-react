@@ -910,7 +910,15 @@ export default function CheckPaymentToss() {
                     </div>
                 </div>
                 <div className="section2-title-box2">
-                    <p className="note-text font-noto">안내사항입니다.</p>
+                    <p className="note-text font-noto">
+                        환불 가능 조건 <br />
+                        - 캐시정기권 : 남은 캐시 환불 가능 ( 부분환불 x ) <br />
+                        - 기간정기권(고정석, 자유석), 사물함 : 남은 날짜 / 결제금액 일할 계산해 환불 가능 <br />
+                        - 1일이용권 : 환불 불가능 <br />
+                        - 스터디룸 : 2일전 100%, 1일전 50%, 당일 환불 불가능 <br />
+
+                        캐시정기권, 기간정기권,사물함 환불시 결제 후 2주이내건만 환불 가능하며 위약금 10% 발생 <br />
+                    </p>
                 </div>
 
                 <div className="toss-payment-widget">
