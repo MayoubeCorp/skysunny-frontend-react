@@ -163,16 +163,13 @@ export default function CheckPaymentToss() {
     // RN 데이터 주입 확인
     useEffect(() => {
         const checkRNData = () => {
-            console.log('[CheckPaymentToss] 현재 window.SKYSUNNY 상태:', window.SKYSUNNY);
             if (window.SKYSUNNY && Object.keys(window.SKYSUNNY).length > 0) {
                 console.log('[CheckPaymentToss] RN 데이터 감지됨');
-                // 이미 onInit에서 처리되므로 여기서는 로그만
             }
         };
 
-        // 페이지 로드 후 주기적으로 확인
         const interval = setInterval(checkRNData, 2000);
-        setTimeout(() => clearInterval(interval), 10000); // 10초 후 중단
+        setTimeout(() => clearInterval(interval), 10000);
 
         return () => clearInterval(interval);
     }, []);
@@ -692,19 +689,35 @@ export default function CheckPaymentToss() {
         <div className="container checkout-page">
             {/* 상단 바 */}
             <div className="top-bar">
-                <div className="top-bar-left">
-                    <button
-                        onClick={() => {
+                <div
+                    className="top-bar-left"
+                    onClick={() => {
+                        try {
+                            // RN WebView 환경
                             if (window.ReactNativeWebView) {
                                 window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'GO_BACK' }));
-                            } else {
-                                window.history.back();
                             }
-                        }}
-                        style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
-                    >
-                        <img src={backArrow} alt="뒤로가기" className="icon24" />
-                    </button>
+                            // RN 커스텀 브리지
+                            else if (window.__askRN) {
+                                window.__askRN('GO_BACK', {});
+                            }
+                            // 웹 환경
+                            else {
+                                navigate(-1);
+                            }
+                        } catch (error) {
+                            navigate(-1);
+                        }
+                    }}
+                    style={{
+                        cursor: 'pointer',
+                        padding: '8px',
+                        minWidth: '40px',
+                        minHeight: '40px',
+                        zIndex: 1000
+                    }}
+                >
+                    <img src={backArrow} alt="뒤로가기" className="icon24" style={{ pointerEvents: 'none' }} />
                 </div>
                 <div className="top-bar-center">
                     <span className="top-txt font-noto">구매확인</span>
@@ -835,13 +848,16 @@ export default function CheckPaymentToss() {
                                             (typeof localStorage !== 'undefined' && localStorage.getItem('accessToken')) ||
                                             undefined;
 
-                                        console.log('[CheckPaymentToss] 쿠폰선택 클릭 - 전달할 데이터:', {
-                                            storeId,
-                                            passId,
-                                            accessToken: accessToken ? '***있음***' : null,
-                                            SK_raw: SK,
-                                            ticketInfo_raw: ticketInfo
-                                        });
+                                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                                        console.log('[CheckPaymentToss] 🎫 쿠폰선택 클릭 - 전달할 데이터:');
+                                        console.log('[CheckPaymentToss] 🏪 storeId:', storeId);
+                                        console.log('[CheckPaymentToss] 🎟️ passId:', passId);
+                                        console.log('[CheckPaymentToss] 🔑 accessToken:', accessToken ? '있음 (' + accessToken.substring(0, 20) + '...)' : '❌ 없음');
+                                        console.log('[CheckPaymentToss] 📦 SK 전체:', SK);
+                                        console.log('[CheckPaymentToss] 🎪 ticketInfo 전체:', ticketInfo);
+                                        console.log('[CheckPaymentToss] 🌐 window.SKYSUNNY:', window.SKYSUNNY);
+                                        console.log('[CheckPaymentToss] 💾 localStorage.accessToken:', localStorage.getItem('accessToken') ? '있음' : '❌ 없음');
+                                        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
                                         navigate('/check-coupon', {
                                             state: { storeId, passId, accessToken }
