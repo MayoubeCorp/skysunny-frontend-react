@@ -70,9 +70,6 @@ const getRequestConfig = async () => {
         headers: {
             Accept: 'application/json; charset=utf-8',
             'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
             ...(token ? { Authorization: `Bearer ${token}` } : {}), // ✅ 토큰 있으면 추가
         },
     };
@@ -148,7 +145,8 @@ const serverUrl = config.API_BASE_URL;
 const httpUrl = {
     qrCode: '/user/qr-code/%s',
     updateOrder: '/user/order/update',  // POST: 주문 정보 업데이트 (사용자, 좌석 등 추가 정보)
-    usableCoupons: '/user/usable/coupons', // GET: 사용 가능한 쿠폰 조회 (쿼리 파라미터 사용)
+    usableCoupons: '/user/usable/coupons?storeId=%s&passId=%s&price=%s',
+    verifyParent: '/user/payment/verify-parent',  // POST: 보호자 인증 (대리인 결제)
 };
 
 export {

@@ -848,10 +848,16 @@ export default function CheckPaymentToss() {
                                             (typeof localStorage !== 'undefined' && localStorage.getItem('accessToken')) ||
                                             undefined;
 
+                                        // price 계산: finalAmount 사용 (할인 적용 전 가격)
+                                        const price = passKind === 'studyroom'
+                                            ? (normalizedStudy?.usageAmountValue || 0)
+                                            : legacyPrice;
+
                                         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                                         console.log('[CheckPaymentToss] 🎫 쿠폰선택 클릭 - 전달할 데이터:');
                                         console.log('[CheckPaymentToss] 🏪 storeId:', storeId);
                                         console.log('[CheckPaymentToss] 🎟️ passId:', passId);
+                                        console.log('[CheckPaymentToss] 💰 price:', price);
                                         console.log('[CheckPaymentToss] 🔑 accessToken:', accessToken ? '있음 (' + accessToken.substring(0, 20) + '...)' : '❌ 없음');
                                         console.log('[CheckPaymentToss] 📦 SK 전체:', SK);
                                         console.log('[CheckPaymentToss] 🎪 ticketInfo 전체:', ticketInfo);
@@ -860,7 +866,7 @@ export default function CheckPaymentToss() {
                                         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
                                         navigate('/check-coupon', {
-                                            state: { storeId, passId, accessToken }
+                                            state: { storeId, passId, price, accessToken }
                                         });
                                     } catch (err) {
                                         console.warn('[CheckPaymentToss] 쿠폰선택 이동 오류', err);
@@ -903,9 +909,32 @@ export default function CheckPaymentToss() {
                     <p className="note-text font-bm">PC, 대리인 결제도 가능해요!</p>
                     <div className="copy-url-box" onClick={async () => {
                         try {
-                            await navigator.clipboard.writeText('https://app.skysunny.mayoube.co.kr/cash');
+                            // 실제 주문번호 가져오기
+                            const orderNumber = getActualOrderNumber();
+
+                            // 환경별 URL 구분
+                            const hostname = window.location.hostname;
+                            let baseUrl;
+
+                            if (hostname.includes('dev') || hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
+                                // 개발 환경
+                                baseUrl = 'https://app-dev.skysunny.mayoube.co.kr/parent-login';
+                            } else {
+                                // 스테이징/프로덕션 환경
+                                baseUrl = 'https://app.skysunny.mayoube.co.kr/parent-login';
+                            }
+
+                            // orderNumber가 있으면 URL에 포함
+                            const urlWithOrder = orderNumber
+                                ? `${baseUrl}?orderNumber=${encodeURIComponent(orderNumber)}`
+                                : baseUrl;
+
+                            await navigator.clipboard.writeText(urlWithOrder);
                             setShowCopyNotification(true);
                             setTimeout(() => setShowCopyNotification(false), 3000);
+
+                            console.log('[CheckPaymentToss] URL 복사됨:', urlWithOrder);
+                            console.log('[CheckPaymentToss] 현재 환경:', hostname.includes('dev') ? 'development' : 'staging/production');
                         } catch (err) {
                             console.error('URL 복사 실패:', err);
                             alert('URL 복사에 실패했습니다.');

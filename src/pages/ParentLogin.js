@@ -1,65 +1,81 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { httpPost } from '../api/httpClient';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { httpPost, httpUrl } from '../api/httpClient';
 import errorIcon from '../img/common/error.png';
 import mainlogo from '../img/common/mainlogo.png';
 import '../styles/main.scss';
 
-const httpUrl = {
-    login: '/user/login',
-};
-
 export default function ParentLogin() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
-    const [id, setId] = useState('');
-    const [password, setPassword] = useState('');
+    const [phone, setPhone] = useState('');
+    const [name, setName] = useState('');
     const [loginError, setLoginError] = useState(false);
+    const [orderNumber, setOrderNumber] = useState('');
+
+    // URL에서 orderNumber 가져오기
+    useEffect(() => {
+        const orderNumberFromUrl = searchParams.get('orderNumber');
+        if (orderNumberFromUrl) {
+            setOrderNumber(orderNumberFromUrl);
+            console.log('[ParentLogin] URL에서 orderNumber 확인:', orderNumberFromUrl);
+        } else {
+            console.warn('[ParentLogin] URL에 orderNumber가 없습니다.');
+        }
+    }, [searchParams]);
 
     const handleBack = () => {
         navigate('/');
     };
 
     const handleLogin = async () => {
-        const trimmedId = (id || '').trim().toLowerCase();
+        const trimmedPhone = (phone || '').trim();
+        const trimmedName = (name || '').trim();
 
-        if (!trimmedId || !password) {
+        // 입력값 검증
+        if (!trimmedPhone || !trimmedName) {
+            alert('회원 연락처와 이름을 모두 입력해주세요.');
             setLoginError(true);
             return;
         }
 
+        // orderNumber 검증
+        if (!orderNumber) {
+            alert('주문 정보를 찾을 수 없습니다.\n올바른 URL을 통해 접속해주세요.');
+            return;
+        }
+
         try {
-            const result = await httpPost(httpUrl.login, [], {
-                type: 'email',
-                id: trimmedId,
-                password: password,
+            console.log('[ParentLogin] 인증 요청:', {
+                orderNumber,
+                parentId: trimmedName,
+                parentPhoneNumber: trimmedPhone
             });
 
-            if (result?.code === 100 && result?.result) {
-                const user = result.result;
+            const result = await httpPost(httpUrl.verifyParent, [], {
+                orderNumber: orderNumber,
+                parentId: trimmedName,
+                parentPhoneNumber: trimmedPhone,
+            });
 
-                // 토큰 저장
-                if (user?.accessToken) {
-                    localStorage.setItem('accessToken', user.accessToken);
-                    if (window.SKYSUNNY) {
-                        window.SKYSUNNY.accessToken = user.accessToken;
-                    }
-                }
-                if (user?.refreshToken) {
-                    localStorage.setItem('refreshToken', user.refreshToken);
-                }
+            console.log('[ParentLogin] 인증 응답:', result);
 
-                // 사용자 정보 저장
-                localStorage.setItem('user', JSON.stringify(user));
+            if (result?.code === 100) {
+                // 인증 성공
+                alert('인증이 완료되었습니다.\n결제를 진행해주세요.');
 
-                // 로그인 성공 - 메인 페이지로 이동
-                alert('로그인 되었습니다.');
-                navigate('/');
+                // 결제 페이지로 이동 (orderNumber 포함)
+                navigate(`/check-payment-toss?orderNumber=${encodeURIComponent(orderNumber)}`);
             } else {
+                // 인증 실패
+                const errorMessage = result?.message || '회원 정보를 확인해주세요.';
+                alert(errorMessage);
                 setLoginError(true);
             }
         } catch (e) {
-            console.error('[LOGIN] 로그인 오류:', e);
+            console.error('[ParentLogin] 인증 오류:', e);
+            alert('인증 중 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.');
             setLoginError(true);
         }
     };
@@ -96,11 +112,11 @@ export default function ParentLogin() {
                         <div className={`input-wrapper ${loginError ? 'error' : ''}`}>
                             <label className="input-label">회원 연락처</label>
                             <input
-                                type="email"
+                                type="tel"
                                 placeholder="숫자만 입력하세요"
-                                value={id}
+                                value={phone}
                                 onChange={(e) => {
-                                    setId(e.target.value);
+                                    setPhone(e.target.value);
                                     setLoginError(false);
                                 }}
                                 onKeyPress={handleKeyPress}
@@ -114,11 +130,11 @@ export default function ParentLogin() {
                         <div className={`input-wrapper ${loginError ? 'error' : ''}`}>
                             <label className="input-label">회원 이름</label>
                             <input
-                                type="password"
+                                type="text"
                                 placeholder="성함을 입력하세요"
-                                value={password}
+                                value={name}
                                 onChange={(e) => {
-                                    setPassword(e.target.value);
+                                    setName(e.target.value);
                                     setLoginError(false);
                                 }}
                                 onKeyPress={handleKeyPress}
@@ -130,7 +146,7 @@ export default function ParentLogin() {
                     {loginError && (
                         <div className="error-message">
                             <img src={errorIcon} alt="에러" className="icon-16" />
-                            <span>아이디 또는 비밀번호가 다릅니다.</span>
+                            <span>회원 정보를 확인해주세요.</span>
                         </div>
                     )}
                 </div>
