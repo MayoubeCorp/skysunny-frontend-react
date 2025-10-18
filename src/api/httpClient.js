@@ -11,7 +11,15 @@ const formatString = (str, ...params) => {
 };
 
 const makeUrl = (url, params) => {
-    let result = config.API_BASE_URL + url;
+    // 개발 환경(localhost)에서는 프록시 사용 (상대 경로)
+    // 프로덕션 환경에서는 절대 경로 사용
+    const isDevelopment =
+        process.env.NODE_ENV === 'development' ||
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
+
+    let result = isDevelopment ? url : config.API_BASE_URL + url;
+
     if (params != null) {
         result = formatString(result, ...params);
     }
