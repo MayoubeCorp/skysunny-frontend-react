@@ -2,6 +2,7 @@
 import { ANONYMOUS, loadTossPayments } from "@tosspayments/tosspayments-sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { httpGet, httpUrl } from '../api/httpClient';
 import Banner from '../components/BannerSlider';
 import backArrow from '../img/common/backarrow.png';
 import close from '../img/common/circleClose.png';
@@ -15,6 +16,7 @@ export default function CheckPaymentToss() {
 
     const [selectedCoupon, setSelectedCoupon] = useState(location.state?.selectedCoupon || null);
     const [ticketInfo, setTicketInfo] = useState(null);
+    const [banners, setBanners] = useState([]);
 
     // 토스페이먼츠 v2 SDK 관련 상태 (샌드박스 방식)
     const [widgets, setWidgets] = useState(null);
@@ -28,16 +30,10 @@ export default function CheckPaymentToss() {
     // SK 먼저 정의 (다른 useMemo에서 사용하므로)
     const SK = useMemo(() => window?.SKYSUNNY || {}, []);
 
-    // 배너 데이터 (BannerSlider 컴포넌트 형식에 맞춤)
+    // 배너 데이터 (API로만 불러옴)
     const bannerImages2 = useMemo(() => {
-        // RN에서 전달된 배너가 있으면 사용
-        const rnBanners = SK?.banners || window?.SKYSUNNY?.banners;
-        if (rnBanners && Array.isArray(rnBanners) && rnBanners.length > 0) {
-            return rnBanners;
-        }
-        // 배너가 없으면 빈 배열 반환 (BannerSlider가 자체적으로 null 처리)
-        return [];
-    }, [SK]);
+        return banners || [];
+    }, [banners]);
 
     const movePage = (path) => navigate(path);
 
@@ -159,6 +155,30 @@ export default function CheckPaymentToss() {
         const total = Math.max(legacyPrice - discount, 0);
         return `${total.toLocaleString()}원`;
     }, [passKind, normalizedStudy, legacyPrice, discount]);
+
+    // 배너 API 호출
+    useEffect(() => {
+        const fetchBanners = async () => {
+            try {
+                console.log('[CheckPaymentToss] 배너 API 호출 시작 - type: sub2');
+                const response = await httpGet(httpUrl.bannerList('sub2', 0, 20), [], {}, true);
+
+                console.log('[CheckPaymentToss] 배너 API 응답:', response);
+
+                if (response?.code === 100 && response?.result) {
+                    const bannerList = response.result;
+                    console.log('[CheckPaymentToss] 배너 데이터:', bannerList);
+                    setBanners(bannerList);
+                } else {
+                    console.warn('[CheckPaymentToss] 배너 데이터 없음 또는 오류:', response);
+                }
+            } catch (error) {
+                console.error('[CheckPaymentToss] 배너 로드 실패:', error);
+            }
+        };
+
+        fetchBanners();
+    }, []);
 
     // RN 데이터 주입 확인
     useEffect(() => {

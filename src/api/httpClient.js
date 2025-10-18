@@ -143,6 +143,8 @@ const imageUrl = (idx) => {
 const serverUrl = config.API_BASE_URL;
 
 const httpUrl = {
+    bannerList: (type, offset = 0, limit = 20) =>
+        `/user/banners?type=${type}&offset=${offset}&limit=${limit}`,
     qrCode: '/user/qr-code/%s',
     updateOrder: '/user/order/update',  // POST: 주문 정보 업데이트 (사용자, 좌석 등 추가 정보)
     usableCoupons: '/user/usable/coupons?storeId=%s&passId=%s&price=%s',
