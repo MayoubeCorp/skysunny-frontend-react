@@ -59,6 +59,8 @@ export default function BannerSlider({
     useEffect(() => {
         if (banners.length > 1) {
             setCurrentIndex(1); // 첫 번째 실제 배너로 설정
+        } else {
+            setCurrentIndex(0); // 배너가 1개면 인덱스 0
         }
     }, [banners.length]);
 
@@ -105,14 +107,15 @@ export default function BannerSlider({
     });
 
     return (
-        <div className="banner-slider" style={{ height: imageHeight, borderRadius: imageBorder }}>
-            <div ref={sliderRef} className="slider-wrapper">
+        <div className="banner-slider" style={{ height: imageHeight, borderRadius: imageBorder, minHeight: imageHeight }}>
+            <div ref={sliderRef} className="slider-wrapper" style={{ height: imageHeight }}>
                 {extendedBanners.map((item, index) => (
                     <div
                         key={`${item.id}-${index}`}
                         className="slider-item"
                         style={{
                             transform: banners.length > 1 ? `translateX(-${currentIndex * 100}%)` : 'translateX(0%)',
+                            height: imageHeight,
                         }}
                     >
                         {getImageSource(item) && (
@@ -120,7 +123,11 @@ export default function BannerSlider({
                                 src={getImageSource(item)}
                                 alt={`배너 ${index + 1}`}
                                 onClick={() => handlePressBanner(item)}
-                                onError={() => console.warn('배너 이미지 로딩 실패')}
+                                onError={(e) => {
+                                    console.warn('배너 이미지 로딩 실패:', getImageSource(item));
+                                    console.error('이미지 오류:', e);
+                                }}
+                                onLoad={() => console.log('배너 이미지 로딩 성공:', getImageSource(item))}
                             />
                         )}
                     </div>
