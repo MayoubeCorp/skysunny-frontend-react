@@ -114,15 +114,20 @@ export default function CheckCoupon() {
             try {
                 setLoading(true);
 
-                // httpClient의 httpGet 사용 (쿼리 파라미터로 storeId, passId 전달)
+                // ✅ price 파라미터 추가 (location.state 또는 ctx에서 가져오기)
+                const price = location.state?.price ?? ctx?.price ?? ctx?.selectedTicket?.price ?? 0;
+
+                // httpClient의 httpGet 사용 (쿼리 파라미터로 storeId, passId, price 전달)
                 const queryParams = {
                     storeId: storeId,
-                    passId: passId
+                    passId: passId,
+                    price: Number(price) // ✅ 정수로 변환
                 };
 
                 console.log('[available coupons] httpGet 호출 시작:', {
                     storeId,
                     passId,
+                    price,
                     url: httpUrl.usableCoupons,
                     queryParams
                 });
