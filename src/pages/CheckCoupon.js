@@ -256,23 +256,23 @@ export default function CheckCoupon() {
                                             // RN에게 페이지 이동 요청
                                             window.ReactNativeWebView.postMessage(JSON.stringify({
                                                 type: 'NAVIGATE',
-                                                path: '/check-payment-toss',
+                                                path: '/cash',
                                                 state: { selectedCoupon: item }
                                             }));
-                                            console.log('[CheckCoupon] RN으로 페이지 이동 요청:', '/check-payment-toss');
+                                            console.log('[CheckCoupon] RN으로 페이지 이동 요청:', '/cash');
 
                                             // 일정 시간 후 React Router로 폴백
                                             setTimeout(() => {
-                                                navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                                navigate('/cash', { state: { selectedCoupon: item } });
                                             }, 100);
                                         } else {
                                             // 일반 웹 환경에서는 바로 React Router 사용
-                                            navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                            navigate('/cash', { state: { selectedCoupon: item } });
                                         }
                                     } catch (error) {
                                         console.error('[CheckCoupon] 페이지 이동 오류:', error);
                                         // 오류 발생 시 React Router로 폴백
-                                        navigate('/check-payment-toss', { state: { selectedCoupon: item } });
+                                        navigate('/cash', { state: { selectedCoupon: item } });
                                     }
                                 }}
                             >
